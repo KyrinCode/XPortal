@@ -1,37 +1,48 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
 import "./MerklePatriciaProof.sol";
+import "./LightClient.sol";
 
 // Uncomment this line to use console.log
 // import "hardhat/console.sol";
 
-// interface ITargetInterpreter {
-//     function xReceive(bytes calldata payload) external;
-// }
+contract XPortal {
+    address public manager;
+    uint8 public chainId;
 
-contract Endpoint {
-    uint public chainId;
+    mapping(address => uint8) public xPortals;
 
     event XSend(
-        uint indexed targetChainId,
-        address indexed targetInterpreter,
-        bytes4 indexed funcSig,
+        uint8 indexed targetChainId,
+        address indexed targetContract,
         bytes payload
     );
+    event AddXPortal(uint8, address);
     event Payload(bytes);
     event Response(bool);
 
-    constructor(uint _chainId) {
+    constructor(uint8 _chainId) {
+        manager = msg.sender;
         chainId = _chainId;
     }
 
+    modifier onlyManager() {
+        require(msg.sender == manager);
+        _;
+    }
+
+    function addXPortal(uint8 _chainId, address _xPortal) external onlyManager {
+        xPortals[_xPortal] = _chainId;
+        // create light client
+        emit AddXPortal(_chainId, _xPortal);
+    }
+
     function xSend(
-        uint targetChainId,
-        address targetInterpreter,
-        bytes4 funcSig, // string func
+        uint8 targetChainId,
+        address targetContract,
         bytes calldata payload
     ) external {
-        emit XSend(targetChainId, targetInterpreter, funcSig, payload);
+        emit XSend(targetChainId, targetContract, payload);
     }
 
     function xReceive(
@@ -39,7 +50,7 @@ contract Endpoint {
         bytes calldata encodedPath,
         bytes calldata rlpParentNodes,
         bytes32 root
-    ) public {
+    ) external {
         require(
             MerklePatriciaProof.verify(
                 value,
@@ -56,34 +67,26 @@ contract Endpoint {
 
         for (uint i = 0; i < logs.length; i++) {
             RLPReader.RLPItem[] memory logValue = RLPReader.toList(logs[i]);
-            address sourceEndpoint = RLPReader.toAddress(logValue[0]); // sourceEndpoint
+            address sourceXPortal = RLPReader.toAddress(logValue[0]); // sourceXPortal
             RLPReader.RLPItem[] memory topics = RLPReader.toList(logValue[1]); // topics
             bytes32 eventSig = bytes32(RLPReader.toBytes(topics[0])); // eventSig
 
-            // sourceEndpoint in whitelist && eventSig matches
-            if (checkSource(sourceEndpoint, eventSig)) {
-                uint targetChainId = RLPReader.toUint(topics[1]); // targetChainId
+            // sourceXPortal in whitelist && eventSig matches
+            if (checkSource(sourceXPortal, eventSig)) {
+                uint8 targetChainId = uint8(RLPReader.toUint(topics[1])); // targetChainId
                 if (checkChainId(targetChainId)) {
-                    address targetInterpreter = abi.decode(
+                    address targetContract = abi.decode(
                         RLPReader.toBytes(topics[2]),
                         (address)
-                    ); // targetIntepreter
-                    bytes4 funcSig = bytes4(RLPReader.toBytes(topics[3])); // funcSig
+                    ); // targetContract
                     bytes memory payload = abi.decode(
                         RLPReader.toBytes(logValue[2]),
                         (bytes)
-                    ); // data/payload
-                    bytes memory call_data = abi.encodeWithSelector(
-                        funcSig,
-                        payload
-                    ); // abi.encodeWithSignature("test(bytes)", payload)
-
-                    // return call_data;
-                    (bool success, bytes memory data) = targetInterpreter.call(
-                        call_data
-                    );
-                    emit Payload(payload);
+                    ); // payload|calldata
+                    // emit Payload(payload);
+                    (bool success, ) = targetContract.call(payload);
                     emit Response(success);
+                    require(success);
                 }
             }
         }
@@ -91,14 +94,13 @@ contract Endpoint {
 
     // whitelist
     function checkSource(
-        address sourceEndpoint,
+        address sourceXPortal,
         bytes32 eventSig
-    ) private pure returns (bool) {
-        // console.log(sourceEndpoint);
-        // console.log(eventSig);
+    ) private view returns (bool) {
         if (
+            xPortals[sourceXPortal] != 0 &&
             eventSig ==
-            0x84bb3894b4ad95ba3cb7feb390b993fd1ebcc028850da4593e0b252e87d9d5e7
+            0xadae96a91bc2e10eb5e85d5fddf15e9ba2aeea50b6bd0184314cfc133ba67a91
         ) {
             return true;
         } else {
@@ -106,7 +108,7 @@ contract Endpoint {
         }
     }
 
-    function checkChainId(uint targetChainId) private view returns (bool) {
+    function checkChainId(uint8 targetChainId) private view returns (bool) {
         // console.log(targetChainId);
         if (chainId == targetChainId) {
             return true;

@@ -4,48 +4,47 @@ pragma solidity ^0.8.9;
 // Uncomment this line to use console.log
 // import "hardhat/console.sol";
 
-interface IEndpoint {
-    function xSend(uint, address, bytes4, bytes calldata) external;
+interface IXPortal {
+    function xSend(uint8, address, bytes calldata) external;
 }
 
 contract Source {
-    address public endpoint;
-    address public targetInterpreter;
+    address public xPortal;
+    address public targetContract;
 
-    function updateEndpoint(address _endpoint) public {
-        endpoint = _endpoint;
+    function updateXPortal(address _xPortal) public {
+        xPortal = _xPortal;
     }
 
-    function updateTargetInterpreter(address _targetInterpreter) public {
-        targetInterpreter = _targetInterpreter;
+    function updateTargetContract(address _targetContract) public {
+        targetContract = _targetContract;
     }
 
-    // original func: test(uint,string); original payload: 5,"text" 
-    // -> funcSig: bytes4(keccak256(bytes("test(bytes)"))) -> 0x2f570a23; payload: rlpPrepared ["0x05","0x74657874"] -> rlpEncoded 0xc6058474657874
-    // -> receipt data 0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000007c605847465787400000000000000000000000000000000000000000000000000
-    // 
-    // -> abiDecoded bytes 0xc6058474657874 -> rlpDecoded ["0x05","0x74657874"] -> toUint 5, string(toBytes) "text" 
+    // func: receive0(uint256,string); payload: 5,"text" 
+    // -> funcSig: bytes4(keccak256(bytes("receive0(uint256,string)"))) -> 0x4c8f7848; payload: abi.encodeWithSelector(funcSig, 5, "text")
+    // -> receipt data  0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000844c8f7848000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000004746578740000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+    // -> abi.decode(bytes) 0x4c8f78480000000000000000000000000000000000000000000000000000000000000005000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000047465787400000000000000000000000000000000000000000000000000000000
     function send0() public { // bytes calldata payload
-        uint chainId = 1;
-        string memory func = "receive0(bytes)"; // Interpreter: "receive0(bytes)", Original: "test(uint,string)"
+        uint8 chainId = 2;
+        string memory func = "receive0(uint256,string)"; // Interpreter: "receive0(bytes)", Original: "test(uint256,string)"
         bytes4 funcSig = bytes4(keccak256(bytes(func)));
        
         uint val = 5;
         string memory s = "text";
-        bytes memory payload = abi.encode(val, s);
+        bytes memory payload = abi.encodeWithSelector(funcSig, val, s);
 
-        IEndpoint(endpoint).xSend(chainId, targetInterpreter, funcSig, payload);
+        IXPortal(xPortal).xSend(chainId, targetContract, payload);
     }
 
     function send1() public { // bytes calldata payload
-        uint chainId = 1;
-        string memory func = "receive1(bytes)"; // Interpreter: "receive1(bytes)", Original: "test1(string,bytes)"
+        uint8 chainId = 2;
+        string memory func = "receive1(string,bytes)"; // Interpreter: "receive1(bytes)", Original: "test1(string,bytes)"
         bytes4 funcSig = bytes4(keccak256(bytes(func)));
        
         string memory s = "text1";
         bytes memory b = hex"31415926";
-        bytes memory payload = abi.encode(s, b);
+        bytes memory payload = abi.encodeWithSelector(funcSig, s, b);
 
-        IEndpoint(endpoint).xSend(chainId, targetInterpreter, funcSig, payload);
+        IXPortal(xPortal).xSend(chainId, targetContract, payload);
     }
 }

@@ -1,6 +1,4 @@
 const { decode, toBuffer } = require('@ethereumjs/util')
-
-// const { decode, toBuffer } = require('eth-util-lite')
 const EthObject = require('./ethObject')
 // const Log = require('./log')
 

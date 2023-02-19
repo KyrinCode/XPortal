@@ -4,14 +4,12 @@ const web3 = new Web3("http://127.0.0.1:7545");
 const { RLP } = require('@ethereumjs/rlp');
 const { Block } = require('@ethereumjs/block');
 const { toBuffer, toHex } = require('@ethereumjs/util');
-const { keccak256 } = require("ethereum-cryptography/keccak");
+// const { keccak256 } = require("ethereum-cryptography/keccak");
 const { Trie } = require('@ethereumjs/trie');
 const Receipt = require('./receipt');
 
 const provider = require('./ganache/provider')
-const {source, endpoint0, endpoint1, targetInterpreter, target} = require('./ganache/contracts')
-
-const fs = require('fs');
+const {source, xPortal1, xPortal2, target} = require('./ganache/contracts')
 
 async function getReceiptProof(txHash) {
     // receipt from rpc, block, web3, receipts
@@ -22,7 +20,7 @@ async function getReceiptProof(txHash) {
     }
     // block from rpc
     const block = await web3.eth.getBlock(targetReceipt.blockHash)
-    // console.log('block', block)
+    console.log('block', block)
     const rawHeader = Block.fromRPC(block).header;
     // raw receipt root
     const rawReceiptRoot = rawHeader.receiptTrie;
@@ -76,19 +74,18 @@ async function getReceiptProof(txHash) {
 async function main() {
     const signer = provider.getSigner();
     console.log(signer)
-    const tx1 = await source.connect(signer).send1(); // "0xc6058474657874"
+    const tx1 = await source.connect(signer).send1();
     // console.log(tx1);
     const receipt1 = await tx1.wait();
-    console.log("receipt1", receipt1);
+    console.log("source receipt", receipt1);
     const txHash = tx1.hash;
     console.log("txHash", tx1.hash);
     const proof = await getReceiptProof(txHash);
     console.log(proof);
     
-    const tx2 = await endpoint1.connect(signer).xReceive(proof.value, proof.encodePath, proof.parentNodes, proof.root);
+    const tx2 = await xPortal2.connect(signer).xReceive(proof.value, proof.encodePath, proof.parentNodes, proof.root);
     const receipt2 = await tx2.wait();
-    console.log("receipt2", receipt2);
+    console.log("xPortal2 receipt", receipt2);
 }
 
 main();
-

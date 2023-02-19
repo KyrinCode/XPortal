@@ -15,34 +15,37 @@ async function main() {
   await source.deployed();
   console.log("Source address:", source.address);
 
-  const Endpoint = await ethers.getContractFactory("Endpoint");
-  const endpoint0 = await Endpoint.deploy(0);
-  await endpoint0.deployed();
-  console.log("Endpoint0 address:", endpoint0.address);
-  const endpoint1 = await Endpoint.deploy(1);
-  await endpoint1.deployed();
-  console.log("Endpoint1 address:", endpoint1.address);
+  const XPortal = await ethers.getContractFactory("XPortal");
+  const xPortal1 = await XPortal.deploy(1);
+  await xPortal1.deployed();
+  console.log("XPortal1 address:", xPortal1.address);
 
-  const TargetInterpreter = await ethers.getContractFactory("TargetInterpreter");
-  const targetInterpreter = await TargetInterpreter.deploy();
-  await targetInterpreter.deployed();
-  console.log("TargetInterpreter address:", targetInterpreter.address);
+  const xPortal2 = await XPortal.deploy(2);
+  await xPortal2.deployed();
+  console.log("XPortal2 address:", xPortal2.address);
 
   const Target = await ethers.getContractFactory("Target");
   const target = await Target.deploy();
   await target.deployed();
   console.log("Target address:", target.address);
 
-  await source.updateEndpoint(endpoint0.address);
-  await source.updateTargetInterpreter(targetInterpreter.address);
-  await targetInterpreter.updateTarget(target.address);
+  const LightClient = await ethers.getContractFactory("LightClient");
+  const lightClient = await LightClient.deploy();
+  await lightClient.deployed();
+  console.log("LightClient address:", lightClient.address);
+
+  await xPortal1.addXPortal(2, xPortal2.address);
+  await xPortal2.addXPortal(1, xPortal1.address);
+
+  await source.updateXPortal(xPortal1.address);
+  await source.updateTargetContract(target.address);
 
   const contracts = {
     "source": source.address,
-    "endpoint0": endpoint0.address,
-    "endpoint1": endpoint1.address,
-    "targetInterpreter": targetInterpreter.address,
-    "target": target.address
+    "xPortal1": xPortal1.address,
+    "xPortal2": xPortal2.address,
+    "target": target.address,
+    "lightClient": lightClient.address
   }
   fs.writeFile("contracts.json", JSON.stringify(contracts), 'utf8', function (err) {
     if (err) {
