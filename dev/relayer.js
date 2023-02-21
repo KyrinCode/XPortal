@@ -9,6 +9,7 @@ const Receipt = require('./receipt');
 const ethers = require('ethers');
 const provider = require('./ganache/provider');
 const { xPortal1, xPortal2, target } = require('./ganache/contracts');
+const { boolean } = require('hardhat/internal/core/params/argumentTypes');
 
 async function getReceiptProof(txHash) {
     const receipt = await web3.eth.getTransactionReceipt(txHash)
@@ -55,7 +56,7 @@ async function getReceiptProof(txHash) {
 }
 
 async function main() {
-    let waitingList1 = [];
+    let waitingList1 = {};
 
     const signer = provider.getSigner();
 
@@ -64,15 +65,27 @@ async function main() {
         const proof = await getReceiptProof(event.transactionHash);
         switch (targetChainId) {
             case 2:
-                const receiptRoot = await xPortal2.getReceiptRootByBlockHeader(1, event.blockHash);
+                const receiptRoot = await xPortal2.getReceiptRootByBlockHeader(1, proof.blockHash);
                 console.log("receipt root", receiptRoot);
                 if (receiptRoot == "0x0000000000000000000000000000000000000000000000000000000000000000") {
-                    waitingList1.push(proof);
-                    console.log("push proof into waiting list 1", proof);
+                    if (waitingList1[proof.blockHash] == undefined) {
+                        waitingList1[proof.blockHash] = [];
+                    }
+                    let flag = false;
+                    for (const p of waitingList1[proof.blockHash]) {
+                        if (JSON.stringify(p.encodePath) == JSON.stringify(proof.encodePath)) {
+                            flag = true;
+                            break;
+                        }
+                    }
+                    if (!flag) {
+                        waitingList1[proof.blockHash].push(proof);
+                        console.log("push proof into waiting list 1", proof);
+                    }
                 } else {
                     await xPortal2.connect(signer).xReceive(1, proof.value, proof.encodePath, proof.rlpParentNodes, proof.blockHash);
                     const encodedPack = ethers.utils.solidityPack(["uint8", "bytes32", "bytes"], [1, proof.blockHash, proof.encodePath]);
-                    const key = ethers.utils.solidityKeccak256(encodedPack);
+                    const key = ethers.utils.solidityKeccak256(["bytes"], [encodedPack]);
                     console.log("key", key);
                     const val1 = await target.val1();
                     const s1 = await target.s1();
@@ -99,29 +112,21 @@ async function main() {
         console.log("SubmitBlockHeader", event);
         switch (chainId) {
             case 1:
-                for (const proof of waitingList1) {
-                    if (proof.blockHash == blockHash) {
-                        await xPortal2.connect(signer).xReceive(1, proof.value, proof.encodePath, proof.rlpParentNodes, proof.blockHash);
-                        const encodedPack = ethers.utils.solidityPack(["uint8", "bytes32", "bytes"], [1, blockHash, proof.encodePath]);
-                        const key = ethers.utils.solidityKeccak256([ "bytes" ], [ encodedPack ]);
-                        console.log("key", key);
-                        const val1 = await target.val1();
-                        const s1 = await target.s1();
-                        const s2 = await target.s2();
-                        const b2 = await target.b2();
-                        console.log(val1);
-                        console.log(s1);
-                        console.log(s2);
-                        console.log(b2);
-                    }
+                for (const proof of waitingList1[blockHash]) {
+                    await xPortal2.connect(signer).xReceive(1, proof.value, proof.encodePath, proof.rlpParentNodes, proof.blockHash);
+                    const encodedPack = ethers.utils.solidityPack(["uint8", "bytes32", "bytes"], [1, proof.blockHash, proof.encodePath]);
+                    const key = ethers.utils.solidityKeccak256(["bytes"], [encodedPack]);
+                    console.log("key", key);
+                    const val1 = await target.val1();
+                    const s1 = await target.s1();
+                    const s2 = await target.s2();
+                    const b2 = await target.b2();
+                    console.log(val1);
+                    console.log(s1);
+                    console.log(s2);
+                    console.log(b2);
                 }
-                waitingList1.filter((value, index, arr) => {
-                    if (value.blockHash == blockHash) {
-                        arr.splice(index, 1);
-                        return true;
-                    }
-                    return false;
-                });
+                delete waitingList1[blockHash];
                 console.log("waiting list 1", waitingList1);
                 break;
 

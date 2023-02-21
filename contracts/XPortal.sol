@@ -15,6 +15,8 @@ interface ILightClient {
         bytes32
     ) external view returns (bool);
 
+    function hasBlockHeader(bytes32) external view returns (bool);
+
     function getStateRootByBlockHeader(bytes32) external view returns (bytes32);
 
     function getReceiptRootByBlockHeader(
@@ -42,6 +44,7 @@ contract XPortal {
         address indexed lightClient
     );
     event SubmitBlockHeader(uint8 indexed chainId, bytes32 indexed blockHash);
+    event UpdateBlockHeader(uint8 indexed chainId, bytes32 indexed blockHash);
     event Payload(address indexed targetContract, bytes payload);
     event Response(bool success);
 
@@ -78,11 +81,31 @@ contract XPortal {
         bytes32 blockHash,
         bytes calldata rlpBlockHeader
     ) external onlyValidator {
+        require(
+            ILightClient(lightClients[_chainId]).hasBlockHeader(blockHash) ==
+                false
+        );
         ILightClient(lightClients[_chainId]).submitBlockHeader(
             blockHash,
             rlpBlockHeader
         );
         emit SubmitBlockHeader(_chainId, blockHash);
+    }
+
+    function updateBlockHeader(
+        uint8 _chainId,
+        bytes32 blockHash,
+        bytes calldata rlpBlockHeader
+    ) external onlyValidator {
+        require(
+            ILightClient(lightClients[_chainId]).hasBlockHeader(blockHash) ==
+                true
+        );
+        ILightClient(lightClients[_chainId]).submitBlockHeader(
+            blockHash,
+            rlpBlockHeader
+        );
+        emit UpdateBlockHeader(_chainId, blockHash);
     }
 
     function getStateRootByBlockHeader(
@@ -123,10 +146,7 @@ contract XPortal {
         bytes32 key = keccak256(
             abi.encodePacked(sourceChainId, blockHash, encodedPath)
         );
-        require(
-            !checkFinished(key),
-            "Passing finished receipt."
-        );
+        require(!checkFinished(key), "Passing finished receipt.");
         require(
             verifyReceiptProof(
                 sourceChainId,
@@ -167,9 +187,7 @@ contract XPortal {
         emit XReceive(key);
     }
 
-    function checkFinished(
-        bytes32 key
-    ) private view returns (bool) {
+    function checkFinished(bytes32 key) private view returns (bool) {
         if (finished[key] == true) {
             return true;
         } else {

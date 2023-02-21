@@ -9,6 +9,7 @@ import "./RLPReader.sol";
 contract LightClient {
     address xPortal;
     struct BlockHeader {
+        bool exist;
         bytes32 stateRoot;
         bytes32 receiptRoot;
     }
@@ -31,9 +32,20 @@ contract LightClient {
         BlockHeader memory bh;
         RLPReader.RLPItem memory item = RLPReader.toRlpItem(rlpBlockHeader);
         RLPReader.RLPItem[] memory blockHeader = RLPReader.toList(item);
+        bh.exist = true;
         bh.stateRoot = bytes32(RLPReader.toBytes(blockHeader[3]));
         bh.receiptRoot = bytes32(RLPReader.toBytes(blockHeader[5]));
         blockHeaders[blockHash] = bh;
+    }
+
+    function hasBlockHeader(
+        bytes32 blockHash
+    ) public view returns (bool) {
+        if (blockHeaders[blockHash].exist) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     function getStateRootByBlockHeader(

@@ -6,7 +6,7 @@ const { source } = require('./ganache/contracts')
 
 async function main() {
     const signer = provider.getSigner();
-    await source.connect(signer).send1();
+    await source.connect(signer).send();
 }
 
 main().catch((error) => {
