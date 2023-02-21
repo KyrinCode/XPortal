@@ -29,10 +29,10 @@ async function main() {
   await target.deployed();
   console.log("Target address:", target.address);
 
-  const LightClient = await ethers.getContractFactory("LightClient");
-  const lightClient = await LightClient.deploy();
-  await lightClient.deployed();
-  console.log("LightClient address:", lightClient.address);
+  // const LightClient = await ethers.getContractFactory("LightClient");
+  // const lightClient = await LightClient.deploy();
+  // await lightClient.deployed();
+  // console.log("LightClient address:", lightClient.address);
 
   await xPortal1.addXPortal(2, xPortal2.address);
   await xPortal2.addXPortal(1, xPortal1.address);
@@ -44,8 +44,7 @@ async function main() {
     "source": source.address,
     "xPortal1": xPortal1.address,
     "xPortal2": xPortal2.address,
-    "target": target.address,
-    "lightClient": lightClient.address
+    "target": target.address
   }
   fs.writeFile("contracts.json", JSON.stringify(contracts), 'utf8', function (err) {
     if (err) {

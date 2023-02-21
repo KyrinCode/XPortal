@@ -9,17 +9,17 @@ const { Trie } = require('@ethereumjs/trie');
 const Receipt = require('./receipt');
 
 const provider = require('./ganache/provider')
-const {source, xPortal1, xPortal2, target} = require('./ganache/contracts')
+const {source, xPortal2, target} = require('./ganache/contracts')
 
 async function getReceiptProof(txHash) {
     // receipt from rpc, block, web3, receipts
-    const targetReceipt = await web3.eth.getTransactionReceipt(txHash)
-    console.log(targetReceipt)
-    if (!targetReceipt) {
-        throw new Error("txhash/targetReceipt not found.")
+    const receipt = await web3.eth.getTransactionReceipt(txHash)
+    console.log(receipt)
+    if (!receipt) {
+        throw new Error("txhash/receipt not found.")
     }
     // block from rpc
-    const block = await web3.eth.getBlock(targetReceipt.blockHash)
+    const block = await web3.eth.getBlock(receipt.blockHash)
     console.log('block', block)
     const rawHeader = Block.fromRPC(block).header;
     // raw receipt root
@@ -45,13 +45,13 @@ async function getReceiptProof(txHash) {
     console.log("Trie receipt root", receiptsTrie.root())
     // console.log("receiptsTrie", receiptsTrie)
 
-    let { node, remaining, stack } = await receiptsTrie.findPath(RLP.encode(targetReceipt.transactionIndex))
+    let { node, remaining, stack } = await receiptsTrie.findPath(RLP.encode(receipt.transactionIndex))
     // console.log('node', node)
     // console.log('remaining', remaining)
     // console.log('stack', stack)
 
     // the path is HP encoded
-    const key = RLP.encode(targetReceipt.transactionIndex)
+    const key = RLP.encode(receipt.transactionIndex)
     // const key = RLP.encode(1023)
     console.log(key)
     let hpKey = new Uint8Array(key.length + 1);

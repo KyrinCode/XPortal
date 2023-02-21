@@ -24,9 +24,9 @@ contract Source {
     // -> funcSig: bytes4(keccak256(bytes("receive0(uint256,string)"))) -> 0x4c8f7848; payload: abi.encodeWithSelector(funcSig, 5, "text")
     // -> receipt data  0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000844c8f7848000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000004746578740000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
     // -> abi.decode(bytes) 0x4c8f78480000000000000000000000000000000000000000000000000000000000000005000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000047465787400000000000000000000000000000000000000000000000000000000
-    function send0() public { // bytes calldata payload
+    function send1() public { // bytes calldata payload
         uint8 chainId = 2;
-        string memory func = "receive0(uint256,string)"; // Interpreter: "receive0(bytes)", Original: "test(uint256,string)"
+        string memory func = "receive1(uint256,string)";
         bytes4 funcSig = bytes4(keccak256(bytes(func)));
        
         uint val = 5;
@@ -36,9 +36,9 @@ contract Source {
         IXPortal(xPortal).xSend(chainId, targetContract, payload);
     }
 
-    function send1() public { // bytes calldata payload
+    function send2() public { // bytes calldata payload
         uint8 chainId = 2;
-        string memory func = "receive1(string,bytes)"; // Interpreter: "receive1(bytes)", Original: "test1(string,bytes)"
+        string memory func = "receive2(string,bytes)";
         bytes4 funcSig = bytes4(keccak256(bytes(func)));
        
         string memory s = "text1";
@@ -46,5 +46,10 @@ contract Source {
         bytes memory payload = abi.encodeWithSelector(funcSig, s, b);
 
         IXPortal(xPortal).xSend(chainId, targetContract, payload);
+    }
+
+    function send() public {
+        send1();
+        send2();
     }
 }

@@ -2,18 +2,13 @@ const Web3 = require('web3');
 const web3 = new Web3("http://127.0.0.1:7545");
 
 const { RLP } = require('@ethereumjs/rlp');
-// const { BlockHeader } = require('@ethereumjs/block');
-const { toBuffer, toHex } = require('@ethereumjs/util');
-const { keccak256 } = require("ethereum-cryptography/keccak");
-// const Header = require('./header');
 
 const provider = require('./ganache/provider')
-const { source, xPortal1, xPortal2, target, lightClient } = require('./ganache/contracts')
+const { lightClient } = require('./ganache/contracts')
 
 async function getBlockHeader(blockNumber) {
     const block = await web3.eth.getBlock(blockNumber)
     console.log('block', block);
-    console.log('block hash', block.hash);
     // const blockHeader = Header.fromRpc(block);
     let data = [
         block.parentHash,
@@ -33,11 +28,8 @@ async function getBlockHeader(blockNumber) {
         block.nonce,
         web3.utils.toHex(block.baseFeePerGas)
     ]
-    console.log(data)
+    // console.log(data)
     const rlpBlockHeader = RLP.encode(data);
-    console.log('rlp block hash', rlpBlockHeader);
-    // const computedBlockHash = keccak256(rlpBlockHeader)
-    // console.log('computed block hash', computedBlockHash);
     return {
         blockHash: block.hash,
         rlpBlockHeader: rlpBlockHeader
@@ -51,9 +43,15 @@ async function main() {
     const { blockHash, rlpBlockHeader } = await getBlockHeader(100);
     console.log(blockHash);
     console.log(rlpBlockHeader);
-    const tx = await lightClient.connect(signer).validateBlockHeader(blockHash, rlpBlockHeader);
-    receipt = await tx.wait()
-    console.log(receipt);
+    const success = await lightClient.validateBlockHeader(blockHash, rlpBlockHeader);
+    console.log(success);
+
+    await lightClient.connect(signer).submitBlockHeader(blockHash, rlpBlockHeader);
+
+    const stateRoot = await lightClient.getStateRootByBlockHeader(blockHash);
+    const receiptRoot = await lightClient.getReceiptRootByBlockHeader(blockHash);
+    console.log(stateRoot)
+    console.log(receiptRoot)
 }
 
 main();

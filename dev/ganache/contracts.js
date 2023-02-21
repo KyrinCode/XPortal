@@ -6,7 +6,7 @@ const contractsData = require('../../contracts.json');
 const sourceData = require('../../artifacts/contracts/Source.sol/Source.json');
 const xPortalData = require('../../artifacts/contracts/XPortal.sol/XPortal.json');
 const targetData = require('../../artifacts/contracts/Target.sol/Target.json');
-const lightClientData = require('../../artifacts/contracts/LightClient.sol/LightClient.json');
+// const lightClientData = require('../../artifacts/contracts/LightClient.sol/LightClient.json');
 
 const sourceAddress = contractsData["source"];
 const sourceAbi = sourceData.abi;
@@ -22,8 +22,8 @@ const targetAddress = contractsData["target"];
 const targetAbi = targetData.abi;
 const target = new ethers.Contract(targetAddress, targetAbi, provider);
 
-const lightClientAddress = contractsData["lightClient"];
-const lightClientAbi = lightClientData.abi;
-const lightClient = new ethers.Contract(lightClientAddress, lightClientAbi, provider);
+// const lightClientAddress = contractsData["lightClient"];
+// const lightClientAbi = lightClientData.abi;
+// const lightClient = new ethers.Contract(lightClientAddress, lightClientAbi, provider);
 
-module.exports = { source, xPortal1, xPortal2, target, lightClient };
+module.exports = { source, xPortal1, xPortal2, target };
