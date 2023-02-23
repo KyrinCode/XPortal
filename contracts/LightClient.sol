@@ -9,12 +9,12 @@ import "./RLPReader.sol";
 contract LightClient {
     address xPortal;
     struct BlockHeader {
-        bool exist;
+        bytes32 blockHash;
         bytes32 stateRoot;
         bytes32 receiptRoot;
     }
 
-    mapping(bytes32 => BlockHeader) public blockHeaders;
+    mapping(uint => BlockHeader) public blockHeaders;
 
     constructor(address _xPortal) {
         xPortal = _xPortal;
@@ -26,22 +26,22 @@ contract LightClient {
     }
 
     function submitBlockHeader(
-        bytes32 blockHash,
+        uint blockNumber,
         bytes calldata rlpBlockHeader
     ) external onlyXPortal {
+        bytes32 blockHash = keccak256(rlpBlockHeader);
         BlockHeader memory bh;
-        RLPReader.RLPItem memory item = RLPReader.toRlpItem(rlpBlockHeader);
-        RLPReader.RLPItem[] memory blockHeader = RLPReader.toList(item);
-        bh.exist = true;
+        RLPReader.RLPItem[] memory blockHeader = RLPReader.toList(RLPReader.toRlpItem(rlpBlockHeader));
+        bh.blockHash = blockHash;
         bh.stateRoot = bytes32(RLPReader.toBytes(blockHeader[3]));
         bh.receiptRoot = bytes32(RLPReader.toBytes(blockHeader[5]));
-        blockHeaders[blockHash] = bh;
+        blockHeaders[blockNumber] = bh;
     }
 
     function hasBlockHeader(
-        bytes32 blockHash
+        uint blockNumber
     ) public view returns (bool) {
-        if (blockHeaders[blockHash].exist) {
+        if (blockHeaders[blockNumber].blockHash != 0x0000000000000000000000000000000000000000000000000000000000000000) {
             return true;
         } else {
             return false;
@@ -49,24 +49,24 @@ contract LightClient {
     }
 
     function getStateRootByBlockHeader(
-        bytes32 blockHash
+        uint blockNumber
     ) public view returns (bytes32) {
-        return blockHeaders[blockHash].stateRoot;
+        return blockHeaders[blockNumber].stateRoot;
     }
 
     function getReceiptRootByBlockHeader(
-        bytes32 blockHash
+        uint blockNumber
     ) public view returns (bytes32) {
-        return blockHeaders[blockHash].receiptRoot;
+        return blockHeaders[blockNumber].receiptRoot;
     }
 
     function verifyReceiptProof(
         bytes calldata value,
         bytes calldata encodedPath,
         bytes calldata rlpParentNodes,
-        bytes32 blockHash
+        uint blockNumber
     ) external view returns (bool) {
-        bytes32 receiptRoot = getReceiptRootByBlockHeader(blockHash);
+        bytes32 receiptRoot = getReceiptRootByBlockHeader(blockNumber);
         bool success = MerklePatriciaProof.verify(
             value,
             encodedPath,

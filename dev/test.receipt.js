@@ -48,7 +48,7 @@ async function getReceiptProof(txHash) {
         value: "0x" + node.value().toString("hex"), // rlpEncodedReceipt, where node.value() equals to stack.map(s => s.raw())[stack.length - 1][1]
         encodePath: "0x" + Buffer.from(hpKey).toString("hex"),
         rlpParentNodes: "0x" + Buffer.from(RLP.encode(stack.map(s => s.raw()))).toString("hex"), // witness
-        blockHash: receipt.blockHash
+        blockNumber: receipt.blockNumber
     }
     return proof;
 }
@@ -77,7 +77,6 @@ async function getBlockHeader(blockNumber) {
     // console.log(data)
     const rlpBlockHeader = "0x" + Buffer.from(RLP.encode(data)).toString("hex");
     return {
-        blockHash: block.hash,
         rlpBlockHeader: rlpBlockHeader
     };
 }
@@ -90,17 +89,16 @@ async function main() {
     console.log("source receipt", receipt1);
 
     // submit block header
-    const { blockHash, rlpBlockHeader } = await getBlockHeader(tx1.blockNumber);
-    console.log("blockHash", blockHash);
+    const { rlpBlockHeader } = await getBlockHeader(tx1.blockNumber);
     console.log("rlpBlockHeader", rlpBlockHeader);
-    await xPortal2.connect(signer).submitBlockHeader(1, blockHash, rlpBlockHeader);
+    await xPortal2.connect(signer).submitBlockHeader(1, tx1.blockNumber, rlpBlockHeader);
 
     // message passing
     console.log("txHash", tx1.hash);
     const proof = await getReceiptProof(tx1.hash);
     console.log(proof);
     const sourceChainId = 1;
-    const tx2 = await xPortal2.connect(signer).xReceive(sourceChainId, proof.value, proof.encodePath, proof.rlpParentNodes, proof.blockHash);
+    const tx2 = await xPortal2.connect(signer).xReceive(sourceChainId, proof.value, proof.encodePath, proof.rlpParentNodes, proof.blockNumber);
     const receipt2 = await tx2.wait();
     console.log("xPortal2 receipt", receipt2);
 

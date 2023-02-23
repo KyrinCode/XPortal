@@ -6,21 +6,21 @@ import "./LightClient.sol";
 // import "hardhat/console.sol";
 
 interface ILightClient {
-    function submitBlockHeader(bytes32, bytes calldata) external;
+    function submitBlockHeader(uint, bytes calldata) external;
 
     function verifyReceiptProof(
         bytes calldata,
         bytes calldata,
         bytes calldata,
-        bytes32
+        uint
     ) external view returns (bool);
 
-    function hasBlockHeader(bytes32) external view returns (bool);
+    function hasBlockHeader(uint) external view returns (bool);
 
-    function getStateRootByBlockHeader(bytes32) external view returns (bytes32);
+    function getStateRootByBlockHeader(uint) external view returns (bytes32);
 
     function getReceiptRootByBlockHeader(
-        bytes32
+        uint
     ) external view returns (bytes32);
 }
 
@@ -30,7 +30,7 @@ contract XPortal {
 
     mapping(uint => address) public xPortals; // chainId => xPortal
     mapping(uint => address) public lightClients; // chainId => lightClient
-    mapping(bytes32 => bool) public finished; // finished payloads
+    mapping(bytes32 => bool) public received; // received payloads
 
     event XSend(
         uint indexed targetChainId,
@@ -43,8 +43,8 @@ contract XPortal {
         address indexed xPortal,
         address indexed lightClient
     );
-    event SubmitBlockHeader(uint indexed chainId, bytes32 indexed blockHash);
-    event UpdateBlockHeader(uint indexed chainId, bytes32 indexed blockHash);
+    event SubmitBlockHeader(uint indexed chainId, uint indexed blockNumber);
+    event UpdateBlockHeader(uint indexed chainId, uint indexed blockNumber);
     event Payload(address indexed targetContract, bytes payload);
     event Response(bool success);
 
@@ -78,53 +78,53 @@ contract XPortal {
 
     function submitBlockHeader(
         uint _chainId,
-        bytes32 blockHash,
+        uint blockNumber,
         bytes calldata rlpBlockHeader
     ) external onlyValidator {
         require(
-            ILightClient(lightClients[_chainId]).hasBlockHeader(blockHash) ==
+            ILightClient(lightClients[_chainId]).hasBlockHeader(blockNumber) ==
                 false
         );
         ILightClient(lightClients[_chainId]).submitBlockHeader(
-            blockHash,
+            blockNumber,
             rlpBlockHeader
         );
-        emit SubmitBlockHeader(_chainId, blockHash);
+        emit SubmitBlockHeader(_chainId, blockNumber);
     }
 
     function updateBlockHeader(
         uint _chainId,
-        bytes32 blockHash,
+        uint blockNumber,
         bytes calldata rlpBlockHeader
     ) external onlyValidator {
         require(
-            ILightClient(lightClients[_chainId]).hasBlockHeader(blockHash) ==
+            ILightClient(lightClients[_chainId]).hasBlockHeader(blockNumber) ==
                 true
         );
         ILightClient(lightClients[_chainId]).submitBlockHeader(
-            blockHash,
+            blockNumber,
             rlpBlockHeader
         );
-        emit UpdateBlockHeader(_chainId, blockHash);
+        emit UpdateBlockHeader(_chainId, blockNumber);
     }
 
     function getStateRootByBlockHeader(
         uint _chainId,
-        bytes32 blockHash
+        uint blockNumber
     ) external view returns (bytes32) {
         return
             ILightClient(lightClients[_chainId]).getStateRootByBlockHeader(
-                blockHash
+                blockNumber
             );
     }
 
     function getReceiptRootByBlockHeader(
         uint _chainId,
-        bytes32 blockHash
+        uint blockNumber
     ) external view returns (bytes32) {
         return
             ILightClient(lightClients[_chainId]).getReceiptRootByBlockHeader(
-                blockHash
+                blockNumber
             );
     }
 
@@ -141,19 +141,19 @@ contract XPortal {
         bytes calldata value,
         bytes calldata encodedPath,
         bytes calldata rlpParentNodes,
-        bytes32 blockHash
+        uint blockNumber
     ) external {
         bytes32 key = keccak256(
-            abi.encodePacked(sourceChainId, blockHash, encodedPath)
+            abi.encodePacked(sourceChainId, blockNumber, encodedPath)
         );
-        require(!checkFinished(key), "Passing finished receipt.");
+        require(!checkReceived(key), "Passing received receipt.");
         require(
             verifyReceiptProof(
                 sourceChainId,
                 value,
                 encodedPath,
                 rlpParentNodes,
-                blockHash
+                blockNumber
             ),
             "Failed to pass MPT proof verification."
         );
@@ -183,12 +183,12 @@ contract XPortal {
                 }
             }
         }
-        finished[key] = true;
+        received[key] = true;
         emit XReceive(key);
     }
 
-    function checkFinished(bytes32 key) private view returns (bool) {
-        if (finished[key] == true) {
+    function checkReceived(bytes32 key) private view returns (bool) {
+        if (received[key] == true) {
             return true;
         } else {
             return false;
@@ -200,13 +200,13 @@ contract XPortal {
         bytes calldata value,
         bytes calldata encodedPath,
         bytes calldata rlpParentNodes,
-        bytes32 blockHash
+        uint blockNumber
     ) private view returns (bool) {
         bool success = ILightClient(lightClients[_chainId]).verifyReceiptProof(
             value,
             encodedPath,
             rlpParentNodes,
-            blockHash
+            blockNumber
         );
         return success;
     }
