@@ -46,8 +46,8 @@ async function getReceiptProof(txHash) {
 
     const proof = {
         value: "0x" + node.value().toString("hex"), // rlpEncodedReceipt, where node.value() equals to stack.map(s => s.raw())[stack.length - 1][1]
-        encodePath: hpKey,
-        rlpParentNodes: RLP.encode(stack.map(s => s.raw())), // witness
+        encodePath: "0x" + Buffer.from(hpKey).toString("hex"),
+        rlpParentNodes: "0x" + Buffer.from(RLP.encode(stack.map(s => s.raw()))).toString("hex"), // witness
         blockHash: receipt.blockHash
     }
     return proof;
@@ -75,7 +75,7 @@ async function getBlockHeader(blockNumber) {
         web3.utils.toHex(block.baseFeePerGas)
     ]
     // console.log(data)
-    const rlpBlockHeader = RLP.encode(data);
+    const rlpBlockHeader = "0x" + Buffer.from(RLP.encode(data)).toString("hex");
     return {
         blockHash: block.hash,
         rlpBlockHeader: rlpBlockHeader
@@ -91,8 +91,8 @@ async function main() {
 
     // submit block header
     const { blockHash, rlpBlockHeader } = await getBlockHeader(tx1.blockNumber);
-    console.log(blockHash);
-    console.log(rlpBlockHeader);
+    console.log("blockHash", blockHash);
+    console.log("rlpBlockHeader", rlpBlockHeader);
     await xPortal2.connect(signer).submitBlockHeader(1, blockHash, rlpBlockHeader);
 
     // message passing

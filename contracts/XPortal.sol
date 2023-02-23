@@ -26,29 +26,29 @@ interface ILightClient {
 
 contract XPortal {
     address public manager;
-    uint8 public chainId;
+    uint public chainId;
 
-    mapping(uint8 => address) public xPortals; // chainId => xPortal
-    mapping(uint8 => address) public lightClients; // chainId => lightClient
+    mapping(uint => address) public xPortals; // chainId => xPortal
+    mapping(uint => address) public lightClients; // chainId => lightClient
     mapping(bytes32 => bool) public finished; // finished payloads
 
     event XSend(
-        uint8 indexed targetChainId,
+        uint indexed targetChainId,
         address indexed targetContract,
         bytes payload
     );
     event XReceive(bytes32 indexed key);
     event AddXPortal(
-        uint8 indexed chainId,
+        uint indexed chainId,
         address indexed xPortal,
         address indexed lightClient
     );
-    event SubmitBlockHeader(uint8 indexed chainId, bytes32 indexed blockHash);
-    event UpdateBlockHeader(uint8 indexed chainId, bytes32 indexed blockHash);
+    event SubmitBlockHeader(uint indexed chainId, bytes32 indexed blockHash);
+    event UpdateBlockHeader(uint indexed chainId, bytes32 indexed blockHash);
     event Payload(address indexed targetContract, bytes payload);
     event Response(bool success);
 
-    constructor(uint8 _chainId) {
+    constructor(uint _chainId) {
         manager = msg.sender;
         chainId = _chainId;
     }
@@ -58,13 +58,13 @@ contract XPortal {
         _;
     }
 
-    function addXPortal(uint8 _chainId, address _xPortal) external onlyManager {
+    function addXPortal(uint _chainId, address _xPortal) external onlyManager {
         xPortals[_chainId] = _xPortal;
         address newLightClient = createLightClient(_chainId); // create light client
         emit AddXPortal(_chainId, _xPortal, newLightClient);
     }
 
-    function createLightClient(uint8 _chainId) private returns (address) {
+    function createLightClient(uint _chainId) private returns (address) {
         address newLightClient = address(new LightClient(address(this)));
         lightClients[_chainId] = newLightClient;
         return newLightClient;
@@ -77,7 +77,7 @@ contract XPortal {
     }
 
     function submitBlockHeader(
-        uint8 _chainId,
+        uint _chainId,
         bytes32 blockHash,
         bytes calldata rlpBlockHeader
     ) external onlyValidator {
@@ -93,7 +93,7 @@ contract XPortal {
     }
 
     function updateBlockHeader(
-        uint8 _chainId,
+        uint _chainId,
         bytes32 blockHash,
         bytes calldata rlpBlockHeader
     ) external onlyValidator {
@@ -109,7 +109,7 @@ contract XPortal {
     }
 
     function getStateRootByBlockHeader(
-        uint8 _chainId,
+        uint _chainId,
         bytes32 blockHash
     ) external view returns (bytes32) {
         return
@@ -119,7 +119,7 @@ contract XPortal {
     }
 
     function getReceiptRootByBlockHeader(
-        uint8 _chainId,
+        uint _chainId,
         bytes32 blockHash
     ) external view returns (bytes32) {
         return
@@ -129,7 +129,7 @@ contract XPortal {
     }
 
     function xSend(
-        uint8 targetChainId,
+        uint targetChainId,
         address targetContract,
         bytes calldata payload
     ) external {
@@ -137,7 +137,7 @@ contract XPortal {
     }
 
     function xReceive(
-        uint8 sourceChainId,
+        uint sourceChainId,
         bytes calldata value,
         bytes calldata encodedPath,
         bytes calldata rlpParentNodes,
@@ -165,7 +165,7 @@ contract XPortal {
             RLPReader.RLPItem[] memory topics = RLPReader.toList(logValue[1]); // topics
             bytes32 eventSig = bytes32(RLPReader.toBytes(topics[0])); // eventSig
             if (checkSource(sourceChainId, sourceXPortal, eventSig)) {
-                uint8 targetChainId = uint8(RLPReader.toUint(topics[1])); // targetChainId
+                uint targetChainId = RLPReader.toUint(topics[1]); // targetChainId
                 if (checkChainId(targetChainId)) {
                     address targetContract = abi.decode(
                         RLPReader.toBytes(topics[2]),
@@ -196,7 +196,7 @@ contract XPortal {
     }
 
     function verifyReceiptProof(
-        uint8 _chainId,
+        uint _chainId,
         bytes calldata value,
         bytes calldata encodedPath,
         bytes calldata rlpParentNodes,
@@ -225,14 +225,14 @@ contract XPortal {
 
     // whitelist
     function checkSource(
-        uint8 sourceChainId,
+        uint sourceChainId,
         address sourceXPortal,
         bytes32 eventSig
     ) private view returns (bool) {
         if (
             sourceXPortal == xPortals[sourceChainId] &&
             eventSig ==
-            0xadae96a91bc2e10eb5e85d5fddf15e9ba2aeea50b6bd0184314cfc133ba67a91
+            0x8d28d1783621b468f6f23ded7ab41634dafc6095b708a38f169f962423b0af7e
         ) {
             return true;
         } else {
@@ -240,7 +240,7 @@ contract XPortal {
         }
     }
 
-    function checkChainId(uint8 targetChainId) private view returns (bool) {
+    function checkChainId(uint targetChainId) private view returns (bool) {
         // console.log(targetChainId);
         if (chainId == targetChainId) {
             return true;

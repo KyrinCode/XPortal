@@ -38,9 +38,9 @@ async function getReceiptProof(txHash) {
 
     let { node, remaining, stack } = await receiptsTrie.findPath(RLP.encode(receipt.transactionIndex))
 
-    // the path is HP encoded
     const key = RLP.encode(receipt.transactionIndex)
     // console.log(key)
+    // the path is HP encoded
     let hpKey = new Uint8Array(key.length + 1);
     hpKey[0] = 32
     hpKey.set(key, 1);
@@ -48,8 +48,8 @@ async function getReceiptProof(txHash) {
 
     const proof = {
         value: "0x" + node.value().toString("hex"), // rlpEncodedReceipt, where node.value() equals to stack.map(s => s.raw())[stack.length - 1][1]
-        encodePath: hpKey,
-        rlpParentNodes: RLP.encode(stack.map(s => s.raw())), // witness
+        encodePath: "0x" + Buffer.from(hpKey).toString("hex"),
+        rlpParentNodes: "0x" + Buffer.from(RLP.encode(stack.map(s => s.raw()))).toString("hex"), // witness
         blockHash: receipt.blockHash
     }
     return proof;
