@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
-import "./MerklePatriciaProof.sol";
-import "./RLPReader.sol";
+import "./lib/MerklePatriciaProof.sol";
+import "./lib/RLPReader.sol";
 
 // Uncomment this line to use console.log
 // import "hardhat/console.sol";
 
 contract LightClient {
+    using RLPReader for RLPReader.RLPItem;
+    using RLPReader for bytes;
+
     address xPortal;
     struct BlockHeader {
         bytes32 blockHash;
@@ -31,10 +34,10 @@ contract LightClient {
     ) external onlyXPortal {
         bytes32 blockHash = keccak256(rlpBlockHeader);
         BlockHeader memory bh;
-        RLPReader.RLPItem[] memory blockHeader = RLPReader.toList(RLPReader.toRlpItem(rlpBlockHeader));
+        RLPReader.RLPItem[] memory blockHeader = rlpBlockHeader.toRlpItem().toList();
         bh.blockHash = blockHash;
-        bh.stateRoot = bytes32(RLPReader.toBytes(blockHeader[3]));
-        bh.receiptRoot = bytes32(RLPReader.toBytes(blockHeader[5]));
+        bh.stateRoot = bytes32(blockHeader[3].toBytes());
+        bh.receiptRoot = bytes32(blockHeader[5].toBytes());
         blockHeaders[blockNumber] = bh;
     }
 
@@ -60,20 +63,32 @@ contract LightClient {
         return blockHeaders[blockNumber].receiptRoot;
     }
 
-    function verifyReceiptProof(
-        bytes calldata value,
-        bytes calldata encodedPath,
+    function extractReceiptFromProof(
+        bytes calldata path,
         bytes calldata rlpParentNodes,
         uint blockNumber
-    ) external view returns (bool) {
+    ) external view returns (bytes memory) {
         bytes32 receiptRoot = getReceiptRootByBlockHeader(blockNumber);
-        bool success = MerklePatriciaProof.verify(
-            value,
-            encodedPath,
+        bytes memory receipt = MerklePatriciaProof.verify(
+            path,
             rlpParentNodes,
             receiptRoot
         );
-        return success;
+        return receipt;
+    }
+
+    function extractAccountFromProof(
+        bytes calldata path,
+        bytes calldata rlpParentNodes,
+        uint blockNumber
+    ) external view returns (bytes memory) {
+        bytes32 stateRoot = getStateRootByBlockHeader(blockNumber);
+        bytes memory account = MerklePatriciaProof.verify(
+            path,
+            rlpParentNodes,
+            stateRoot
+        );
+        return account;
     }
 
     // test

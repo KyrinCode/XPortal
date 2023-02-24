@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
-import "./RLPReader.sol";
+import "./lib/RLPReader.sol";
 
 // Uncomment this line to use console.log
 // import "hardhat/console.sol";
 
 contract Test {
+    function testAbiEncodePacked(address a) public pure returns (bytes memory) {
+        return abi.encodePacked(keccak256(abi.encodePacked(a)));
+    }
+
     function testFunctionAndPayload() public pure returns (bytes memory) {
         // bytes memory x = "0x05";
         // bytes memory y = "0x74657874";

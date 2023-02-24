@@ -6,6 +6,7 @@ pragma solidity ^0.8.9;
 
 interface IXPortal {
     function xSend(uint, address, bytes calldata) external;
+    function xCall(uint, uint, address) external;
 }
 
 contract Source {
@@ -51,5 +52,13 @@ contract Source {
     function send() public {
         send1();
         send2();
+    }
+
+    function call1() public {
+        uint chainId = 2;
+        uint blockNumber = 799;
+        address targetAccount = 0x11D6A1e4704d91f97dD8A96FB988641B504DBAc4;
+
+        IXPortal(xPortal).xCall(chainId, blockNumber, targetAccount);
     }
 }

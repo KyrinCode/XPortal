@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
+import "./lib/BytesLib.sol";
 import "./LightClient.sol";
 
 // Uncomment this line to use console.log
@@ -8,36 +9,41 @@ import "./LightClient.sol";
 interface ILightClient {
     function submitBlockHeader(uint, bytes calldata) external;
 
-    function verifyReceiptProof(
-        bytes calldata,
-        bytes calldata,
-        bytes calldata,
-        uint
-    ) external view returns (bool);
-
     function hasBlockHeader(uint) external view returns (bool);
 
     function getStateRootByBlockHeader(uint) external view returns (bytes32);
 
-    function getReceiptRootByBlockHeader(
+    function getReceiptRootByBlockHeader(uint) external view returns (bytes32);
+
+    function extractReceiptFromProof(
+        bytes calldata,
+        bytes calldata,
         uint
-    ) external view returns (bytes32);
+    ) external view returns (bytes memory);
+
+    function extractAccountFromProof(
+        bytes calldata,
+        bytes calldata,
+        uint
+    ) external view returns (bytes memory);
 }
 
 contract XPortal {
+    using RLPReader for RLPReader.RLPItem;
+    using RLPReader for bytes;
+    using BytesLib for bytes;
+
     address public manager;
     uint public chainId;
 
     mapping(uint => address) public xPortals; // chainId => xPortal
     mapping(uint => address) public lightClients; // chainId => lightClient
+
     mapping(bytes32 => bool) public received; // received payloads
 
-    event XSend(
-        uint indexed targetChainId,
-        address indexed targetContract,
-        bytes payload
-    );
-    event XReceive(bytes32 indexed key);
+    // mapping(bytes32 => address) public called; // called querys
+    mapping(bytes32 => bool) public responsed; // responsed querys
+
     event AddXPortal(
         uint indexed chainId,
         address indexed xPortal,
@@ -45,8 +51,22 @@ contract XPortal {
     );
     event SubmitBlockHeader(uint indexed chainId, uint indexed blockNumber);
     event UpdateBlockHeader(uint indexed chainId, uint indexed blockNumber);
+    event XSend(
+        address indexed sourceContract,
+        uint indexed targetChainId,
+        address indexed targetContract,
+        bytes payload
+    );
+    event XReceive(bytes32 indexed key);
+    event XCall(
+        address indexed sourceContract,
+        uint indexed targetChainId,
+        uint indexed blockNumber,
+        address targetAccount
+    );
     event Payload(address indexed targetContract, bytes payload);
     event Response(bool success);
+    event StorageHash(bytes32 storageHash);
 
     constructor(uint _chainId) {
         manager = msg.sender;
@@ -133,46 +153,42 @@ contract XPortal {
         address targetContract,
         bytes calldata payload
     ) external {
-        emit XSend(targetChainId, targetContract, payload);
+        emit XSend(msg.sender, targetChainId, targetContract, payload);
     }
 
     function xReceive(
         uint sourceChainId,
-        bytes calldata value,
-        bytes calldata encodedPath,
-        bytes calldata rlpParentNodes,
+        bytes calldata path,
+        bytes calldata rlpReceiptProof,
         uint blockNumber
     ) external {
         bytes32 key = keccak256(
-            abi.encodePacked(sourceChainId, blockNumber, encodedPath)
+            abi.encodePacked(sourceChainId, blockNumber, path)
         );
-        require(!checkReceived(key), "Passing received receipt.");
-        require(
-            verifyReceiptProof(
-                sourceChainId,
-                value,
-                encodedPath,
-                rlpParentNodes,
-                blockNumber
-            ),
-            "Failed to pass MPT proof verification."
-        );
+        require(received[key] == false, "Passing received receipt.");
+        bytes memory receipt = ILightClient(lightClients[sourceChainId])
+            .extractReceiptFromProof(path, rlpReceiptProof, blockNumber);
 
-        RLPReader.RLPItem[] memory logs = parseLogs(value);
+        RLPReader.RLPItem[] memory logs = parseLogs(receipt);
         for (uint i = 0; i < logs.length; i++) {
-            RLPReader.RLPItem[] memory logValue = RLPReader.toList(logs[i]);
-            address sourceXPortal = RLPReader.toAddress(logValue[0]); // sourceXPortal
-            RLPReader.RLPItem[] memory topics = RLPReader.toList(logValue[1]); // topics
-            bytes32 eventSig = bytes32(RLPReader.toBytes(topics[0])); // eventSig
-            if (checkSource(sourceChainId, sourceXPortal, eventSig)) {
-                uint targetChainId = RLPReader.toUint(topics[1]); // targetChainId
-                if (checkChainId(targetChainId)) {
+            RLPReader.RLPItem[] memory logValue = logs[i].toList();
+            address sourceXPortal = logValue[0].toAddress(); // sourceXPortal
+            RLPReader.RLPItem[] memory topics = logValue[1].toList(); // topics
+            bytes32 eventSig = bytes32(topics[0].toBytes()); // eventSig
+            if (
+                sourceXPortal == xPortals[sourceChainId] &&
+                eventSig ==
+                0x82e806817932576004db2f6df876ee5a397c85d7c1ea6240f965fd1f94afe847
+            ) {
+                uint targetChainId = topics[2].toUint(); // targetChainId
+                if (targetChainId == chainId) {
+                    // check chainId
                     address targetContract = abi.decode(
-                        RLPReader.toBytes(topics[2]),
+                        topics[3].toBytes(),
                         (address)
                     ); // targetContract
                     bytes memory payload = abi.decode(
-                        RLPReader.toBytes(logValue[2]),
+                        logValue[2].toBytes(),
                         (bytes)
                     ); // payload|calldata
 
@@ -187,65 +203,60 @@ contract XPortal {
         emit XReceive(key);
     }
 
-    function checkReceived(bytes32 key) private view returns (bool) {
-        if (received[key] == true) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    function verifyReceiptProof(
-        uint _chainId,
-        bytes calldata value,
-        bytes calldata encodedPath,
-        bytes calldata rlpParentNodes,
-        uint blockNumber
-    ) private view returns (bool) {
-        bool success = ILightClient(lightClients[_chainId]).verifyReceiptProof(
-            value,
-            encodedPath,
-            rlpParentNodes,
-            blockNumber
-        );
-        return success;
-    }
-
     function parseLogs(
-        bytes calldata value
+        bytes memory value
     ) private pure returns (RLPReader.RLPItem[] memory) {
-        RLPReader.RLPItem memory item = RLPReader.toRlpItem(value[1:]);
-        RLPReader.RLPItem[] memory receiptValue = RLPReader.toList(item);
+        RLPReader.RLPItem[] memory receiptValue = value
+            .slice(1, value.length - 1)
+            .toRlpItem()
+            .toList();
         require(
-            RLPReader.toUint(receiptValue[0]) == 1,
+            receiptValue[0].toUint() == 1,
             "Receipt status should equal to 1."
         );
-        return RLPReader.toList(receiptValue[3]);
+        return receiptValue[3].toList();
     }
 
-    // whitelist
-    function checkSource(
-        uint sourceChainId,
-        address sourceXPortal,
-        bytes32 eventSig
-    ) private view returns (bool) {
-        if (
-            sourceXPortal == xPortals[sourceChainId] &&
-            eventSig ==
-            0x8d28d1783621b468f6f23ded7ab41634dafc6095b708a38f169f962423b0af7e
-        ) {
-            return true;
-        } else {
-            return false;
-        }
+    function xCall(
+        uint targetChainId,
+        uint blockNumber,
+        address targetAccount
+        // bytes32 slot,
+    ) external // fallback funcSig
+    {
+        // bytes32 key = keccak256(
+        //     abi.encodePacked(msg.sender, targetChainId, blockNumber, targetAccount)
+        // );
+        // called[key] = msg.sender;
+        emit XCall(msg.sender, targetChainId, blockNumber, targetAccount);
     }
 
-    function checkChainId(uint targetChainId) private view returns (bool) {
-        // console.log(targetChainId);
-        if (chainId == targetChainId) {
-            return true;
-        } else {
-            return false;
-        }
+    function xResponse(
+        address sourceContract,
+        uint targetChainId,
+        uint blockNumber,
+        address targetAccount,
+        bytes calldata rlpAccountProof
+    ) external {
+        bytes32 key = keccak256(
+            abi.encodePacked(
+                sourceContract,
+                targetChainId,
+                blockNumber,
+                targetAccount
+            )
+        );
+        require(responsed[key] == false, "Passing responsed query.");
+        bytes memory path = abi.encodePacked(
+            keccak256(abi.encodePacked(targetAccount))
+        );
+        bytes memory account = ILightClient(lightClients[targetChainId])
+            .extractAccountFromProof(path, rlpAccountProof, blockNumber);
+        RLPReader.RLPItem[] memory accountFields = account.toRlpItem().toList();
+        uint nonce = accountFields[0].toUint();
+        uint balance = accountFields[1].toUint();
+        bytes32 storageHash = bytes32(accountFields[2].toBytes());
+        bytes32 codeHash = bytes32(accountFields[3].toBytes());
+        emit StorageHash(storageHash);
     }
 }

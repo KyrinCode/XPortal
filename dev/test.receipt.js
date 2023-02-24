@@ -39,13 +39,22 @@ async function getReceiptProof(txHash) {
     // the path is HP encoded
     const key = RLP.encode(receipt.transactionIndex)
     // console.log(key)
+    let mptKey = new Uint8Array(key.length * 2);
+    for (let i = 0; i < key.length; i++) {
+        mptKey[i] = key[i] >> 4;
+        mptKey[i+1] = key[i] & 0xF;
+    }
+    console.log("mptKey", mptKey);
+
     let hpKey = new Uint8Array(key.length + 1);
     hpKey[0] = 32
     hpKey.set(key, 1);
     // console.log(hpKey)
 
     const proof = {
-        value: "0x" + node.value().toString("hex"), // rlpEncodedReceipt, where node.value() equals to stack.map(s => s.raw())[stack.length - 1][1]
+        // value: "0x" + node.value().toString("hex"), // rlpEncodedReceipt, where node.value() equals to stack.map(s => s.raw())[stack.length - 1][1]
+        key: "0x" + Buffer.from(key).toString("hex"),
+        mptKey: "0x" + Buffer.from(mptKey).toString("hex"),
         encodePath: "0x" + Buffer.from(hpKey).toString("hex"),
         rlpParentNodes: "0x" + Buffer.from(RLP.encode(stack.map(s => s.raw()))).toString("hex"), // witness
         blockNumber: receipt.blockNumber
@@ -98,7 +107,7 @@ async function main() {
     const proof = await getReceiptProof(tx1.hash);
     console.log(proof);
     const sourceChainId = 1;
-    const tx2 = await xPortal2.connect(signer).xReceive(sourceChainId, proof.value, proof.encodePath, proof.rlpParentNodes, proof.blockNumber);
+    const tx2 = await xPortal2.connect(signer).xReceive(sourceChainId, proof.key, proof.rlpParentNodes, proof.blockNumber);
     const receipt2 = await tx2.wait();
     console.log("xPortal2 receipt", receipt2);
 
