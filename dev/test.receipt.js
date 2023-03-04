@@ -4,10 +4,43 @@ const web3 = new Web3("http://127.0.0.1:7545");
 const { RLP } = require('@ethereumjs/rlp');
 const { Block } = require('@ethereumjs/block');
 const { Trie } = require('@ethereumjs/trie');
-const Receipt = require('./receipt');
+const { toBuffer } = require('@ethereumjs/util')
+// const Receipt = require('./receipt');
 
 const provider = require('./ganache/provider')
 const { source, xPortal2, target } = require('./ganache/contracts')
+
+function getRawReceipt(receipt) {
+    // const rawReceipt = Receipt.fromRpc(receipt).serialize();
+
+    const logs = receipt.logs.map(l => {
+        // [address, [topics array], data]
+        return [
+            toBuffer(l.address), // convert address to buffer
+            l.topics.map(toBuffer), // convert topics to buffer
+            toBuffer(l.data) // convert data to buffer
+        ]
+    })
+    let data = [
+        toBuffer(
+            // receipt.status ? 1 : 0
+            receipt.status !== undefined && receipt.status != null
+                ? receipt.status
+                    ? 1
+                    : 0
+                : receipt.root
+        ),
+        toBuffer(receipt.cumulativeGasUsed),
+        toBuffer(receipt.logsBloom),
+        logs
+    ];
+    if (receipt.type) {
+        return Buffer.concat([toBuffer(receipt.type), RLP.encode(data)]);
+    } else {
+        return RLP.encode(data);
+    }
+    // return rawReceipt;
+}
 
 async function getReceiptProof(txHash) {
     const receipt = await web3.eth.getTransactionReceipt(txHash)
@@ -26,9 +59,9 @@ async function getReceiptProof(txHash) {
     const receiptsTrie = new Trie();
     for (let i = 0; i < receipts.length; i++) {
         const siblingReceipt = receipts[i];
-        const path = RLP.encode(siblingReceipt.transactionIndex)
-        const rawReceipt = Receipt.fromRpc(siblingReceipt).serialize() // todo: extract useful part
-        await receiptsTrie.put(path, rawReceipt)
+        const path = RLP.encode(siblingReceipt.transactionIndex);
+        const rawReceipt = getRawReceipt(siblingReceipt);
+        await receiptsTrie.put(path, rawReceipt);
     }
 
     // trie receipt root
@@ -54,15 +87,15 @@ async function getReceiptProof(txHash) {
     const proof = {
         // value: "0x" + node.value().toString("hex"), // rlpEncodedReceipt, where node.value() equals to stack.map(s => s.raw())[stack.length - 1][1]
         key: "0x" + Buffer.from(key).toString("hex"),
-        mptKey: "0x" + Buffer.from(mptKey).toString("hex"),
-        encodePath: "0x" + Buffer.from(hpKey).toString("hex"),
+        // mptKey: "0x" + Buffer.from(mptKey).toString("hex"),
+        // encodePath: "0x" + Buffer.from(hpKey).toString("hex"),
         rlpParentNodes: "0x" + Buffer.from(RLP.encode(stack.map(s => s.raw()))).toString("hex"), // witness
         blockNumber: receipt.blockNumber
     }
     return proof;
 }
 
-async function getBlockHeader(blockNumber) {
+async function getRlpBlockHeader(blockNumber) {
     const block = await web3.eth.getBlock(blockNumber)
     // console.log('block', block);
     let data = [
@@ -98,7 +131,7 @@ async function main() {
     console.log("source receipt", receipt1);
 
     // submit block header
-    const { rlpBlockHeader } = await getBlockHeader(tx1.blockNumber);
+    const { rlpBlockHeader } = await getRlpBlockHeader(tx1.blockNumber);
     console.log("rlpBlockHeader", rlpBlockHeader);
     await xPortal2.connect(signer).submitBlockHeader(1, tx1.blockNumber, rlpBlockHeader);
 

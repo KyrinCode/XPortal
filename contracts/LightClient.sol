@@ -34,32 +34,24 @@ contract LightClient {
     ) external onlyXPortal {
         bytes32 blockHash = keccak256(rlpBlockHeader);
         BlockHeader memory bh;
-        RLPReader.RLPItem[] memory blockHeader = rlpBlockHeader.toRlpItem().toList();
+        RLPReader.RLPItem[] memory blockHeader = rlpBlockHeader
+            .toRlpItem()
+            .toList();
         bh.blockHash = blockHash;
         bh.stateRoot = bytes32(blockHeader[3].toBytes());
         bh.receiptRoot = bytes32(blockHeader[5].toBytes());
         blockHeaders[blockNumber] = bh;
     }
 
-    function hasBlockHeader(
-        uint blockNumber
-    ) public view returns (bool) {
-        if (blockHeaders[blockNumber].blockHash != 0x0000000000000000000000000000000000000000000000000000000000000000) {
-            return true;
-        } else {
-            return false;
-        }
+    function getBlockHash(uint blockNumber) external view returns (bytes32) {
+        return blockHeaders[blockNumber].blockHash;
     }
 
-    function getStateRootByBlockHeader(
-        uint blockNumber
-    ) public view returns (bytes32) {
+    function getStateRoot(uint blockNumber) public view returns (bytes32) {
         return blockHeaders[blockNumber].stateRoot;
     }
 
-    function getReceiptRootByBlockHeader(
-        uint blockNumber
-    ) public view returns (bytes32) {
+    function getReceiptRoot(uint blockNumber) public view returns (bytes32) {
         return blockHeaders[blockNumber].receiptRoot;
     }
 
@@ -68,7 +60,7 @@ contract LightClient {
         bytes calldata rlpParentNodes,
         uint blockNumber
     ) external view returns (bytes memory) {
-        bytes32 receiptRoot = getReceiptRootByBlockHeader(blockNumber);
+        bytes32 receiptRoot = getReceiptRoot(blockNumber);
         bytes memory receipt = MerklePatriciaProof.verify(
             path,
             rlpParentNodes,
@@ -82,11 +74,24 @@ contract LightClient {
         bytes calldata rlpParentNodes,
         uint blockNumber
     ) external view returns (bytes memory) {
-        bytes32 stateRoot = getStateRootByBlockHeader(blockNumber);
+        bytes32 stateRoot = getStateRoot(blockNumber);
         bytes memory account = MerklePatriciaProof.verify(
             path,
             rlpParentNodes,
             stateRoot
+        );
+        return account;
+    }
+
+    function extractSlotValueFromProof(
+        bytes calldata path,
+        bytes calldata rlpParentNodes,
+        bytes32 storageHash
+    ) external pure returns (bytes memory) {
+        bytes memory account = MerklePatriciaProof.verify(
+            path,
+            rlpParentNodes,
+            storageHash
         );
         return account;
     }

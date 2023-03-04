@@ -6,12 +6,18 @@ pragma solidity ^0.8.9;
 
 interface IXPortal {
     function xSend(uint, address, bytes calldata) external;
-    function xCall(uint, uint, address) external;
+    function xCall(uint, uint, address, bytes32[] calldata) external;
 }
 
 contract Source {
     address public xPortal;
     address public targetContract;
+
+    uint public nonce;
+    uint public balance;
+    bytes32 public storageHash;
+    bytes32 public codeHash;
+    bytes32[] public slotValues;
 
     function updateXPortal(address _xPortal) public {
         xPortal = _xPortal;
@@ -58,7 +64,16 @@ contract Source {
         uint chainId = 2;
         uint blockNumber = 799;
         address targetAccount = 0x11D6A1e4704d91f97dD8A96FB988641B504DBAc4;
+        bytes32[] memory slots = new bytes32[](2);
+        slots[0] = 0x0;
+        slots[1] = 0x0000000000000000000000000000000000000000000000000000000000000001;
 
-        IXPortal(xPortal).xCall(chainId, blockNumber, targetAccount);
+        IXPortal(xPortal).xCall(chainId, blockNumber, targetAccount, slots);
     }
+
+    fallback(bytes calldata input) external returns (bytes memory output) {
+        (nonce, balance, storageHash, codeHash, slotValues) = abi.decode(input[4:], (uint256, uint256, bytes32, bytes32, bytes32[]));
+    }
+
+    receive() external payable {}
 }

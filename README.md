@@ -1,13 +1,17 @@
-# Sample Hardhat Project
+# XPortal
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
+A trustless lightweight cross-shard protocal.
 
-Try running some of the following tasks:
+#ganache #hardhat
 
-```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.js
-```
+validator.js listen events and submit block headers.
+
+relayer.js listen events and pass messages and proofs.
+
+## Reference
+
+receipt proof https://github.com/PISAresearch/event-proofs
+
+transaction proof https://github.com/lorenzb/proveth
+
+receipt transaction state proof https://github.com/zmitton/eth-proof https://github.com/syscoin/eth-object

@@ -14,32 +14,46 @@ async function getQueriesFromReceipt(txHash) {
     if (!receipt) {
         throw new Error("txhash/receipt not found.")
     }
-    // console.log(receipt.logs);
+    console.log('eventSig', receipt.logs[0].topics[0]);
     // filter contract address and eventSig
     let queries = [];
     for (const log of receipt.logs) {
-        if (log.address == xPortal1.address && log.topics[0] == "0xaa31d73d2ab91eb37f4617f921d2f3bd94a7766aa1218da58268c6b1774bd525") {
+        if (log.address == xPortal1.address && log.topics[0] == "0x27cde0325f9f2701d6bb9f4ff15e17515c039efcec89bde96fd47590d2fcb212") {
             let query = {}
             query["sourceContract"] = web3.eth.abi.decodeParameter('address', log.topics[1]);
             query["targetChainId"] = web3.eth.abi.decodeParameter('uint', log.topics[2]);
             query["blockNumber"] = web3.eth.abi.decodeParameter('uint', log.topics[3]);
-            query["targetAccount"] = web3.eth.abi.decodeParameter('address', log.data);
+            const data = web3.eth.abi.decodeParameters(['address', 'bytes32[]'], log.data);
+            query["targetAccount"] = data[0];
+            query["slots"] = data[1];
+            // query["targetAccount"] = web3.eth.abi.decodeParameter('address', log.data);
             queries.push(query);
         }
     }
     return queries;
 }
 
-async function getStateProof(chainId, blockNumber, account) {
-    const slotIndex = 0;
-    const stateProof = await web3.eth.getProof(account, [slotIndex, 1], blockNumber);
+async function getStateProof(chainId, blockNumber, account, slots) {
+    const stateProof = await web3.eth.getProof(account, slots, blockNumber);
     console.log("stateProof", stateProof);
-    const accountProof = [];
+    let accountProof = [];
     for (const rlpItem of stateProof.accountProof) {
         accountProof.push(RLP.decode(rlpItem));
     }
     const rlpAccountProof = "0x" + Buffer.from(RLP.encode(accountProof)).toString("hex");
-    return rlpAccountProof;
+    let rlpStorageProof = [];
+    for (const slotProof of stateProof.storageProof) {
+        let proof = []
+        for (const rlpItem of slotProof.proof) {
+            proof.push(RLP.decode(rlpItem));
+        }
+        const rlpSlotProof = "0x" + Buffer.from(RLP.encode(proof)).toString("hex");
+        rlpStorageProof.push(rlpSlotProof);
+    }
+    return {
+        rlpAccountProof: rlpAccountProof,
+        rlpStorageProof: rlpStorageProof
+    };
 }
 
 async function getBlockHeader(blockNumber) {
@@ -88,12 +102,28 @@ async function main() {
         console.log("rlpBlockHeader", rlpBlockHeader);
         await xPortal1.connect(signer).submitBlockHeader(query.targetChainId, query.blockNumber, rlpBlockHeader);
 
-        const rlpAccountProof = await getStateProof(query.targetChainId, query.blockNumber, query.targetAccount);
+        const {rlpAccountProof, rlpStorageProof} = await getStateProof(query.targetChainId, query.blockNumber, query.targetAccount, query.slots);
         console.log(rlpAccountProof);
+        console.log(rlpStorageProof);
 
-        const tx2 = await xPortal1.connect(signer).xResponse(source.address, query.targetChainId, query.blockNumber, query.targetAccount, rlpAccountProof);
+        const tx2 = await xPortal1.connect(signer).xResponse(source.address, query.targetChainId, query.blockNumber, query.targetAccount, rlpAccountProof, query.slots, rlpStorageProof);
         const receipt2 = await tx2.wait();
         console.log("xResponse receipt", receipt2);
+
+        const nonce = await source.nonce();
+        const balance = await source.balance();
+        const storageHash = await source.storageHash();
+        const codeHash = await source.codeHash();
+        
+        console.log(nonce);
+        console.log(balance);
+        console.log(storageHash);
+        console.log(codeHash);
+        
+        const slotValue0 = await source.slotValues(0);
+        console.log(slotValue0);
+        const slotValue1 = await source.slotValues(1);
+        console.log(slotValue1);
     }
 }
 

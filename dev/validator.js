@@ -2,11 +2,12 @@ const Web3 = require('web3');
 const web3 = new Web3("http://127.0.0.1:7545");
 
 const { RLP } = require('@ethereumjs/rlp');
+const ethers = require('ethers');
 const provider = require('./ganache/provider')
 const { xPortal1, xPortal2 } = require('./ganache/contracts')
 
-async function getBlockHeader(blockNumber) {
-    const block = await web3.eth.getBlock(blockNumber);
+async function getRlpBlockHeader(blockNumber) {
+    const block = await web3.eth.getBlock(blockNumber)
     // console.log('block', block);
     let data = [
         block.parentHash,
@@ -27,34 +28,51 @@ async function getBlockHeader(blockNumber) {
         web3.utils.toHex(block.baseFeePerGas)
     ]
     // console.log(data)
-    const rlpBlockHeader = RLP.encode(data);
+    const rlpBlockHeader = "0x" + Buffer.from(RLP.encode(data)).toString("hex");
     return {
-        blockHash: block.hash,
         rlpBlockHeader: rlpBlockHeader
     };
+}
+
+function wait(milliseconds) {
+    return new Promise(resolve => {
+        setTimeout(resolve, milliseconds);
+    });
 }
 
 async function main() {
     const signer = provider.getSigner();
 
-    xPortal1.on("XSend", async (targetChainId, targetContract, payload, event) => {
+    xPortal1.on("XSend", async (sourceContract, _targetChainId, targetContract, payload, event) => {
         console.log("XSend", event);
-        switch (targetChainId) {
-            case 2:
-                const receiptRoot = await xPortal2.getReceiptRootByBlockHeader(1, event.blockHash);
-                console.log("receipt root", receiptRoot);
-                if (receiptRoot == "0x0000000000000000000000000000000000000000000000000000000000000000") {
-                    const { blockHash, rlpBlockHeader } = await getBlockHeader(event.blockNumber);
-                    await xPortal2.connect(signer).submitBlockHeader(1, blockHash, rlpBlockHeader);
-                    const newReceiptRoot = await xPortal2.getReceiptRootByBlockHeader(1, event.blockHash);
-                    console.log("new receipt root", newReceiptRoot);
-                }
-                break;
-        
-            default:
-                break;
+        const targetChainId = ethers.BigNumber.from(_targetChainId).toNumber()
+
+        const blockHash = await xPortal2.getBlockHash(1, event.blockNumber);
+        console.log("block hash", blockHash);
+        if (blockHash == "0x0000000000000000000000000000000000000000000000000000000000000000") {
+            const { rlpBlockHeader } = await getRlpBlockHeader(event.blockNumber);
+            await wait(2000);
+            await xPortal2.connect(signer).submitBlockHeader(1, event.blockNumber, rlpBlockHeader);
+            const newReceiptRoot = await xPortal2.getReceiptRoot(1, event.blockNumber);
+            console.log("new receipt root", newReceiptRoot);
         }
     });
+
+    xPortal1.on("XCall", async (sourceContract, _targetChainId, _blockNumber, targetAccount, slots, event) => {
+        console.log("XCall", event);
+        const targetChainId = ethers.BigNumber.from(_targetChainId).toNumber();
+        const blockNumber = ethers.BigNumber.from(_blockNumber).toNumber();
+
+        const blockHash = await xPortal1.getBlockHash(targetChainId, blockNumber);
+        console.log("block hash", blockHash);
+        if (blockHash == "0x0000000000000000000000000000000000000000000000000000000000000000") {
+            const { rlpBlockHeader } = await getRlpBlockHeader(blockNumber);
+            await wait(2000);
+            await xPortal1.connect(signer).submitBlockHeader(targetChainId, blockNumber, rlpBlockHeader);
+            const newReceiptRoot = await xPortal1.getReceiptRoot(targetChainId, blockNumber);
+            console.log("new receipt root", newReceiptRoot);
+        }
+    })
 }
 
 main().catch((error) => {

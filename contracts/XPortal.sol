@@ -9,11 +9,11 @@ import "./LightClient.sol";
 interface ILightClient {
     function submitBlockHeader(uint, bytes calldata) external;
 
-    function hasBlockHeader(uint) external view returns (bool);
+    function getBlockHash(uint) external view returns (bytes32);
 
-    function getStateRootByBlockHeader(uint) external view returns (bytes32);
+    function getStateRoot(uint) external view returns (bytes32);
 
-    function getReceiptRootByBlockHeader(uint) external view returns (bytes32);
+    function getReceiptRoot(uint) external view returns (bytes32);
 
     function extractReceiptFromProof(
         bytes calldata,
@@ -26,6 +26,12 @@ interface ILightClient {
         bytes calldata,
         uint
     ) external view returns (bytes memory);
+
+    function extractSlotValueFromProof(
+        bytes calldata,
+        bytes calldata,
+        bytes32
+    ) external pure returns (bytes memory);
 }
 
 contract XPortal {
@@ -40,9 +46,14 @@ contract XPortal {
     mapping(uint => address) public lightClients; // chainId => lightClient
 
     mapping(bytes32 => bool) public received; // received payloads
-
-    // mapping(bytes32 => address) public called; // called querys
     mapping(bytes32 => bool) public responsed; // responsed querys
+
+    struct Account {
+        uint nonce;
+        uint balance;
+        bytes32 storageHash;
+        bytes32 codeHash;
+    }
 
     event AddXPortal(
         uint indexed chainId,
@@ -57,16 +68,19 @@ contract XPortal {
         address indexed targetContract,
         bytes payload
     );
-    event XReceive(bytes32 indexed key);
+    event XReceive(
+        bytes32 indexed key,
+        address indexed targetContract,
+        bytes payload
+    );
     event XCall(
         address indexed sourceContract,
         uint indexed targetChainId,
         uint indexed blockNumber,
-        address targetAccount
+        address targetAccount,
+        bytes32[] slots
     );
-    event Payload(address indexed targetContract, bytes payload);
-    event Response(bool success);
-    event StorageHash(bytes32 storageHash);
+    event XResponse(bytes32 indexed key, address indexed sourceContract);
 
     constructor(uint _chainId) {
         manager = msg.sender;
@@ -102,8 +116,8 @@ contract XPortal {
         bytes calldata rlpBlockHeader
     ) external onlyValidator {
         require(
-            ILightClient(lightClients[_chainId]).hasBlockHeader(blockNumber) ==
-                false
+            ILightClient(lightClients[_chainId]).getBlockHash(blockNumber) ==
+                0x0000000000000000000000000000000000000000000000000000000000000000
         );
         ILightClient(lightClients[_chainId]).submitBlockHeader(
             blockNumber,
@@ -118,8 +132,8 @@ contract XPortal {
         bytes calldata rlpBlockHeader
     ) external onlyValidator {
         require(
-            ILightClient(lightClients[_chainId]).hasBlockHeader(blockNumber) ==
-                true
+            ILightClient(lightClients[_chainId]).getBlockHash(blockNumber) !=
+                0x0000000000000000000000000000000000000000000000000000000000000000
         );
         ILightClient(lightClients[_chainId]).submitBlockHeader(
             blockNumber,
@@ -128,24 +142,22 @@ contract XPortal {
         emit UpdateBlockHeader(_chainId, blockNumber);
     }
 
-    function getStateRootByBlockHeader(
-        uint _chainId,
-        uint blockNumber
-    ) external view returns (bytes32) {
-        return
-            ILightClient(lightClients[_chainId]).getStateRootByBlockHeader(
-                blockNumber
-            );
+    function getBlockHash(uint _chainId, uint blockNumber) external view returns (bytes32) {
+        return ILightClient(lightClients[_chainId]).getBlockHash(blockNumber);
     }
 
-    function getReceiptRootByBlockHeader(
+    function getStateRoot(
         uint _chainId,
         uint blockNumber
     ) external view returns (bytes32) {
-        return
-            ILightClient(lightClients[_chainId]).getReceiptRootByBlockHeader(
-                blockNumber
-            );
+        return ILightClient(lightClients[_chainId]).getStateRoot(blockNumber);
+    }
+
+    function getReceiptRoot(
+        uint _chainId,
+        uint blockNumber
+    ) external view returns (bytes32) {
+        return ILightClient(lightClients[_chainId]).getReceiptRoot(blockNumber);
     }
 
     function xSend(
@@ -192,15 +204,13 @@ contract XPortal {
                         (bytes)
                     ); // payload|calldata
 
-                    emit Payload(targetContract, payload);
                     (bool success, ) = targetContract.call(payload);
-                    emit Response(success);
                     require(success, "Failed to call target contract.");
+                    emit XReceive(key, targetContract, payload);
                 }
             }
         }
         received[key] = true;
-        emit XReceive(key);
     }
 
     function parseLogs(
@@ -220,15 +230,16 @@ contract XPortal {
     function xCall(
         uint targetChainId,
         uint blockNumber,
-        address targetAccount
-        // bytes32 slot,
-    ) external // fallback funcSig
-    {
-        // bytes32 key = keccak256(
-        //     abi.encodePacked(msg.sender, targetChainId, blockNumber, targetAccount)
-        // );
-        // called[key] = msg.sender;
-        emit XCall(msg.sender, targetChainId, blockNumber, targetAccount);
+        address targetAccount,
+        bytes32[] calldata slots // fallback funcSig
+    ) external {
+        emit XCall(
+            msg.sender,
+            targetChainId,
+            blockNumber,
+            targetAccount,
+            slots
+        );
     }
 
     function xResponse(
@@ -236,27 +247,95 @@ contract XPortal {
         uint targetChainId,
         uint blockNumber,
         address targetAccount,
-        bytes calldata rlpAccountProof
+        bytes calldata rlpAccountProof,
+        bytes32[] calldata slots,
+        bytes[] calldata rlpStorageProof
     ) external {
         bytes32 key = keccak256(
             abi.encodePacked(
                 sourceContract,
                 targetChainId,
                 blockNumber,
-                targetAccount
+                targetAccount,
+                slots
             )
         );
         require(responsed[key] == false, "Passing responsed query.");
+        Account memory account = getAccountFields(
+            targetChainId,
+            targetAccount,
+            rlpAccountProof,
+            blockNumber
+        );
+        // emit StorageHash(storageHash);
+
+        bytes32[] memory slotValues = getSlotValues(
+            targetChainId,
+            slots,
+            rlpStorageProof,
+            account.storageHash
+        );
+
+        (bool success, ) = sourceContract.call(
+            abi.encodeWithSelector(
+                0x00000000,
+                account.nonce,
+                account.balance,
+                account.storageHash,
+                account.codeHash,
+                slotValues
+            )
+        );
+        require(success, "Failed to call target contract.");
+        emit XResponse(key, sourceContract);
+        responsed[key] == true;
+    }
+
+    function getAccountFields(
+        uint targetChainId,
+        address targetAccount,
+        bytes calldata rlpAccountProof,
+        uint blockNumber
+    ) private view returns (Account memory) {
         bytes memory path = abi.encodePacked(
             keccak256(abi.encodePacked(targetAccount))
         );
-        bytes memory account = ILightClient(lightClients[targetChainId])
-            .extractAccountFromProof(path, rlpAccountProof, blockNumber);
-        RLPReader.RLPItem[] memory accountFields = account.toRlpItem().toList();
-        uint nonce = accountFields[0].toUint();
-        uint balance = accountFields[1].toUint();
-        bytes32 storageHash = bytes32(accountFields[2].toBytes());
-        bytes32 codeHash = bytes32(accountFields[3].toBytes());
-        emit StorageHash(storageHash);
+        // bytes memory account = ;
+        RLPReader.RLPItem[] memory accountFields = ILightClient(
+            lightClients[targetChainId]
+        )
+            .extractAccountFromProof(path, rlpAccountProof, blockNumber)
+            .toRlpItem()
+            .toList();
+        Account memory account;
+        account.nonce = accountFields[0].toUint();
+        account.balance = accountFields[1].toUint();
+        account.storageHash = bytes32(accountFields[2].toBytes());
+        account.codeHash = bytes32(accountFields[3].toBytes());
+        return account;
+    }
+
+    function getSlotValues(
+        uint targetChainId,
+        bytes32[] calldata slots,
+        bytes[] calldata rlpStorageProof,
+        bytes32 storageHash
+    ) private view returns (bytes32[] memory) {
+        bytes32[] memory slotValues = new bytes32[](slots.length);
+        for (uint i = 0; i < slots.length; i++) {
+            bytes memory slotPath = abi.encodePacked(
+                keccak256(abi.encodePacked(slots[i]))
+            );
+            bytes32 slotValue = bytes32(
+                ILightClient(lightClients[targetChainId])
+                    .extractSlotValueFromProof(
+                        slotPath,
+                        rlpStorageProof[i],
+                        storageHash
+                    )
+            );
+            slotValues[i] = slotValue;
+        }
+        return slotValues;
     }
 }
