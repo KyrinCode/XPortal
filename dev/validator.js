@@ -52,7 +52,27 @@ async function main() {
         if (blockHash == "0x0000000000000000000000000000000000000000000000000000000000000000") {
             const { rlpBlockHeader } = await getRlpBlockHeader(event.blockNumber);
             await wait(2000);
-            await xPortal2.connect(signer).submitBlockHeader(1, event.blockNumber, rlpBlockHeader);
+            tx = await xPortal2.connect(signer).submitBlockHeader(1, event.blockNumber, rlpBlockHeader);
+            
+            // const tx = await provider.getTransaction("0xafef64d0d03db9f13c6c3f8aec5902167ea680bd0ffa0268d89a426d624b2ae1");
+            const unsignedTx = {
+                to: tx.to,
+                nonce: tx.nonce,
+                gasLimit: tx.gasLimit,
+                gasPrice: tx.gasPrice,
+                data: tx.data,
+                value: tx.value,
+                chainId: tx.chainId
+            };
+            const signature = {
+                v: tx.v,
+                r: tx.r,
+                s: tx.s
+            }
+            const serialized = ethers.utils.serializeTransaction(unsignedTx, signature);
+            console.log("serialized", serialized);
+
+            console.log("tx", tx);
             const newReceiptRoot = await xPortal2.getReceiptRoot(1, event.blockNumber);
             console.log("new receipt root", newReceiptRoot);
         }

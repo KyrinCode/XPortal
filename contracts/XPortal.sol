@@ -46,7 +46,7 @@ contract XPortal {
     mapping(uint => address) public lightClients; // chainId => lightClient
 
     mapping(bytes32 => bool) public received; // received payloads
-    mapping(bytes32 => bool) public responsed; // responsed querys
+    mapping(bytes32 => bool) public responded; // responded querys
 
     struct Account {
         uint nonce;
@@ -80,7 +80,7 @@ contract XPortal {
         address targetAccount,
         bytes32[] slots
     );
-    event XResponse(bytes32 indexed key, address indexed sourceContract);
+    event XRespond(bytes32 indexed key, address indexed sourceContract);
 
     constructor(uint _chainId) {
         manager = msg.sender;
@@ -168,7 +168,7 @@ contract XPortal {
         emit XSend(msg.sender, targetChainId, targetContract, payload);
     }
 
-    function xReceive(
+    function xReceive( // 怎么保证source有权限
         uint sourceChainId,
         bytes calldata path,
         bytes calldata rlpReceiptProof,
@@ -204,7 +204,7 @@ contract XPortal {
                         (bytes)
                     ); // payload|calldata
 
-                    (bool success, ) = targetContract.call(payload);
+                    (bool success, ) = targetContract.call(payload); // 避免重入攻击或哈希碰撞，这里应该阻止 targetContract 是 XPortal 本身或任何 lightclient，避免绕过限制更新区块头
                     require(success, "Failed to call target contract.");
                     emit XReceive(key, targetContract, payload);
                 }
@@ -242,8 +242,8 @@ contract XPortal {
         );
     }
 
-    function xResponse(
-        address sourceContract,
+    function xRespond(
+        address sourceContract, // 怎么保证是这个source
         uint targetChainId,
         uint blockNumber,
         address targetAccount,
@@ -260,7 +260,7 @@ contract XPortal {
                 slots
             )
         );
-        require(responsed[key] == false, "Passing responsed query.");
+        require(responded[key] == false, "Passing responded query.");
         Account memory account = getAccountFields(
             targetChainId,
             targetAccount,
@@ -287,8 +287,8 @@ contract XPortal {
             )
         );
         require(success, "Failed to call target contract.");
-        emit XResponse(key, sourceContract);
-        responsed[key] == true;
+        emit XRespond(key, sourceContract);
+        responded[key] == true;
     }
 
     function getAccountFields(

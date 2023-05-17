@@ -196,7 +196,7 @@ async function main() {
             callWaitingList[blockNumber.toString()].push(proof);
             console.log("push proof into call waiting list", proof);
         } else {
-            await xPortal1.connect(signer).xResponse(sourceContract, targetChainId, blockNumber, targetAccount, proof.rlpAccountProof, slots, proof.rlpStorageProof);
+            await xPortal1.connect(signer).xRespond(sourceContract, targetChainId, blockNumber, targetAccount, proof.rlpAccountProof, slots, proof.rlpStorageProof);
 
             const encodedPack = ethers.utils.solidityPack(["address", "uint256", "uint256", "address", "bytes32[]"], [sourceContract, targetChainId, blockNumber, targetAccount, slots]);
             const key = ethers.utils.solidityKeccak256(["bytes"], [encodedPack]);
@@ -206,20 +206,20 @@ async function main() {
             const balance = await source.balance();
             const storageHash = await source.storageHash();
             const codeHash = await source.codeHash();
-            console.log(nonce);
-            console.log(balance);
-            console.log(storageHash);
-            console.log(codeHash);
+            console.log("nonce", nonce);
+            console.log("balance", balance);
+            console.log("storageHash", storageHash);
+            console.log("codeHash", codeHash);
             const slotValue0 = await source.slotValues(0);
-            console.log(slotValue0);
+            console.log("slotValue0", slotValue0);
             const slotValue1 = await source.slotValues(1);
-            console.log(slotValue1);
+            console.log("slotValue1", slotValue1);
         }
 
     });
 
-    xPortal1.on("XResponse", (key, sourceContract, event) => {
-        console.log("XResponse", event);
+    xPortal1.on("XRespond", (key, sourceContract, event) => {
+        console.log("XRespond", event);
         console.log("key", key);
     });
 
@@ -229,7 +229,7 @@ async function main() {
         const blockNumber = ethers.BigNumber.from(_blockNumber).toNumber();
 
         for (const proof of callWaitingList[blockNumber.toString()]) {
-            await xPortal1.connect(signer).xResponse(proof.sourceContract, proof.targetChainId, blockNumber, proof.targetAccount, proof.rlpAccountProof, proof.slots, proof.rlpStorageProof);
+            await xPortal1.connect(signer).xRespond(proof.sourceContract, proof.targetChainId, blockNumber, proof.targetAccount, proof.rlpAccountProof, proof.slots, proof.rlpStorageProof);
 
             const encodedPack = ethers.utils.solidityPack(["address", "uint256", "uint256", "address", "bytes32[]"], [proof.sourceContract, proof.targetChainId, blockNumber, proof.targetAccount, proof.slots]);
             const key = ethers.utils.solidityKeccak256(["bytes"], [encodedPack]);

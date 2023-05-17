@@ -8,7 +8,7 @@ module.exports = {
       url: 'http://127.0.0.1:7545',
       chainId: 1337,
       accounts: [
-        '0x500a7ae6bd64d63d8b74db394319a114bc7035ab618a2268f7356bfd621c02ee'
+        '0x0209f8e9b75e8cecadb61ec8cd00824e14c54d3965aace403148058d48b8c170'
       ]
     }
   }

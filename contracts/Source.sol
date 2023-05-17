@@ -62,8 +62,8 @@ contract Source {
 
     function call1() public {
         uint chainId = 2;
-        uint blockNumber = 799;
-        address targetAccount = 0x11D6A1e4704d91f97dD8A96FB988641B504DBAc4;
+        uint blockNumber = 90;
+        address targetAccount = 0xC02a1889E6c59aA1a71Cfe3142C97Db21a7B63Ef;
         bytes32[] memory slots = new bytes32[](2);
         slots[0] = 0x0;
         slots[1] = 0x0000000000000000000000000000000000000000000000000000000000000001;
@@ -72,6 +72,7 @@ contract Source {
     }
 
     fallback(bytes calldata input) external returns (bytes memory output) {
+        require(msg.sender == xPortal);
         (nonce, balance, storageHash, codeHash, slotValues) = abi.decode(input[4:], (uint256, uint256, bytes32, bytes32, bytes32[]));
     }
 
