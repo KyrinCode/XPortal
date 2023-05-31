@@ -45,8 +45,8 @@ contract XPortal {
     mapping(uint => address) public xPortals; // chainId => xPortal
     mapping(uint => address) public lightClients; // chainId => lightClient
 
-    mapping(bytes32 => bool) public received; // received payloads
-    mapping(bytes32 => bool) public responded; // responded querys
+    mapping(bytes32 => uint) public received; // received payloads
+    mapping(bytes32 => uint) public responded; // responded querys
 
     struct Account {
         uint nonce;
@@ -68,6 +68,12 @@ contract XPortal {
         address indexed targetContract,
         bytes payload
     );
+    event XSendWithAccessControl(
+        address indexed sourceContract,
+        uint indexed targetChainId,
+        address indexed targetContract,
+        bytes payload
+    );
     event XReceive(
         bytes32 indexed key,
         address indexed targetContract,
@@ -81,6 +87,8 @@ contract XPortal {
         bytes32[] slots
     );
     event XRespond(bytes32 indexed key, address indexed sourceContract);
+
+    event AccessControl(bool accessControl);
 
     constructor(uint _chainId) {
         manager = msg.sender;
@@ -142,7 +150,10 @@ contract XPortal {
         emit UpdateBlockHeader(_chainId, blockNumber);
     }
 
-    function getBlockHash(uint _chainId, uint blockNumber) external view returns (bytes32) {
+    function getBlockHash(
+        uint _chainId,
+        uint blockNumber
+    ) external view returns (bytes32) {
         return ILightClient(lightClients[_chainId]).getBlockHash(blockNumber);
     }
 
@@ -168,7 +179,16 @@ contract XPortal {
         emit XSend(msg.sender, targetChainId, targetContract, payload);
     }
 
-    function xReceive( // 怎么保证source有权限
+    function xSendWithAccessControl(
+        uint targetChainId,
+        address targetContract,
+        bytes calldata payload
+    ) external {
+        emit XSendWithAccessControl(msg.sender, targetChainId, targetContract, payload);
+    }
+
+    function xReceive(
+        // 怎么保证source有权限
         uint sourceChainId,
         bytes calldata path,
         bytes calldata rlpReceiptProof,
@@ -176,44 +196,20 @@ contract XPortal {
     ) external {
         bytes32 key = keccak256(
             abi.encodePacked(sourceChainId, blockNumber, path)
-        );
-        require(received[key] == false, "Passing received receipt.");
+        ); // key以交易收据为单位，可能包括多个需要递交的消息
+        require(received[key] == 0, "Passing received receipt.");
         bytes memory receipt = ILightClient(lightClients[sourceChainId])
             .extractReceiptFromProof(path, rlpReceiptProof, blockNumber);
 
-        RLPReader.RLPItem[] memory logs = parseLogs(receipt);
+        RLPReader.RLPItem[] memory logs = parseReceipt(receipt);
         for (uint i = 0; i < logs.length; i++) {
             RLPReader.RLPItem[] memory logValue = logs[i].toList();
-            address sourceXPortal = logValue[0].toAddress(); // sourceXPortal
-            RLPReader.RLPItem[] memory topics = logValue[1].toList(); // topics
-            bytes32 eventSig = bytes32(topics[0].toBytes()); // eventSig
-            if (
-                sourceXPortal == xPortals[sourceChainId] &&
-                eventSig ==
-                0x82e806817932576004db2f6df876ee5a397c85d7c1ea6240f965fd1f94afe847
-            ) {
-                uint targetChainId = topics[2].toUint(); // targetChainId
-                if (targetChainId == chainId) {
-                    // check chainId
-                    address targetContract = abi.decode(
-                        topics[3].toBytes(),
-                        (address)
-                    ); // targetContract
-                    bytes memory payload = abi.decode(
-                        logValue[2].toBytes(),
-                        (bytes)
-                    ); // payload|calldata
-
-                    (bool success, ) = targetContract.call(payload); // 避免重入攻击或哈希碰撞，这里应该阻止 targetContract 是 XPortal 本身或任何 lightclient，避免绕过限制更新区块头
-                    require(success, "Failed to call target contract.");
-                    emit XReceive(key, targetContract, payload);
-                }
-            }
+            handleLog(logValue, sourceChainId, key);
         }
-        received[key] = true;
+        received[key] = 1;
     }
 
-    function parseLogs(
+    function parseReceipt(
         bytes memory value
     ) private pure returns (RLPReader.RLPItem[] memory) {
         RLPReader.RLPItem[] memory receiptValue = value
@@ -227,12 +223,79 @@ contract XPortal {
         return receiptValue[3].toList();
     }
 
+    function handleLog(
+        RLPReader.RLPItem[] memory logValue,
+        uint sourceChainId,
+        bytes32 key
+    ) private {
+        address sourceXPortal = logValue[0].toAddress(); // sourceXPortal
+        RLPReader.RLPItem[] memory topics = logValue[1].toList(); // topics
+        bytes32 eventSig = bytes32(topics[0].toBytes()); // eventSig
+        if (
+            sourceXPortal == xPortals[sourceChainId] &&
+            (eventSig ==
+                0x82e806817932576004db2f6df876ee5a397c85d7c1ea6240f965fd1f94afe847 ||
+                eventSig ==
+                0x00e806817932576004db2f6df876ee5a397c85d7c1ea6240f965fd1f94afe847) // xSendWithAccessControl
+        ) {
+            (address sourceContract, address targetContract) = parseTopics(
+                topics
+            );
+            bytes memory payload = abi.decode(logValue[2].toBytes(), (bytes)); // payload|calldata
+            if (eventSig == 0x00e806817932576004db2f6df876ee5a397c85d7c1ea6240f965fd1f94afe847) {
+                accessControl(sourceChainId, sourceContract, targetContract, payload); // 另一组xSend event不一样 key不一样 xReceive 对应key eventSig 加上accessControl
+            }
+            (bool success, ) = targetContract.call(payload); // 避免重入攻击或哈希碰撞，这里应该阻止 targetContract 是 XPortal 本身或任何 lightclient，避免绕过限制更新区块头
+            require(success, "Failed to call target contract.");
+            emit XReceive(key, targetContract, payload);
+        }
+    }
+
+    function parseTopics(
+        RLPReader.RLPItem[] memory topics
+    ) private view returns (address, address) {
+        require(topics[2].toUint() == chainId); // check targetChainId
+
+        address sourceContract = abi.decode(topics[1].toBytes(), (address)); // sourceContract
+        address targetContract = abi.decode(topics[3].toBytes(), (address)); // targetContract
+        return (sourceContract, targetContract);
+    }
+
+    function accessControl(
+        uint sourceChainId,
+        address sourceContract,
+        address targetContract,
+        bytes memory payload
+    ) private {
+        (bool ac, ) = targetContract.call(
+            abi.encodeWithSelector(
+                0x00000000,
+                payload.slice(0, 4),
+                sourceChainId,
+                sourceContract
+            )
+        );
+        emit AccessControl(ac);
+        require(ac);
+    }
+
     function xCall(
         uint targetChainId,
         uint blockNumber,
         address targetAccount,
         bytes32[] calldata slots // fallback funcSig
     ) external {
+        bytes32 key = keccak256(
+            abi.encodePacked(
+                msg.sender,
+                targetChainId,
+                blockNumber,
+                targetAccount,
+                slots
+            )
+        );
+        require(responded[key] == 0, "Passing called query.");
+        responded[key] = 1;
         emit XCall(
             msg.sender,
             targetChainId,
@@ -243,7 +306,7 @@ contract XPortal {
     }
 
     function xRespond(
-        address sourceContract, // 怎么保证是这个source
+        address sourceContract, // 怎么保证是这个source responded 增加一个状态，xCall的时候0->1 respond的时候1->2
         uint targetChainId,
         uint blockNumber,
         address targetAccount,
@@ -260,7 +323,10 @@ contract XPortal {
                 slots
             )
         );
-        require(responded[key] == false, "Passing responded query.");
+        require(
+            responded[key] == 1,
+            "Passing responded query or wrong source contract."
+        );
         Account memory account = getAccountFields(
             targetChainId,
             targetAccount,
@@ -288,7 +354,7 @@ contract XPortal {
         );
         require(success, "Failed to call target contract.");
         emit XRespond(key, sourceContract);
-        responded[key] == true;
+        responded[key] == 2;
     }
 
     function getAccountFields(

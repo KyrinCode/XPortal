@@ -239,14 +239,14 @@ async function main() {
             const balance = await source.balance();
             const storageHash = await source.storageHash();
             const codeHash = await source.codeHash();
-            console.log(nonce);
-            console.log(balance);
-            console.log(storageHash);
-            console.log(codeHash);
+            console.log("nonce", nonce);
+            console.log("balance", balance);
+            console.log("storageHash", storageHash);
+            console.log("codeHash", codeHash);
             const slotValue0 = await source.slotValues(0);
-            console.log(slotValue0);
+            console.log("slotValue0", slotValue0);
             const slotValue1 = await source.slotValues(1);
-            console.log(slotValue1);
+            console.log("slotValue1", slotValue1);
         }
         delete callWaitingList[blockNumber.toString()];
         console.log("call waiting list", callWaitingList);
