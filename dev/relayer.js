@@ -140,10 +140,10 @@ async function main() {
             const s1 = await target.s1();
             const s2 = await target.s2();
             const b2 = await target.b2();
-            console.log(val1);
-            console.log(s1);
-            console.log(s2);
-            console.log(b2);
+            console.log("Target.sol uint val1:", val1);
+            console.log("Target.sol string s1:", s1);
+            console.log("Target.sol string s2:", s2);
+            console.log("Target.sol bytes b2:", b2);
         }
     });
 
@@ -154,11 +154,15 @@ async function main() {
 
     xPortal2.on("SubmitBlockHeader", async (_chainId, _blockNumber, event) => {
         console.log("SubmitBlockHeader", event);
+        console.log("second relay start", Date.now())
         const chainId = ethers.BigNumber.from(_chainId).toNumber()
         const blockNumber = ethers.BigNumber.from(_blockNumber).toNumber();
 
         for (const proof of sendWaitingList[blockNumber.toString()]) {
+            console.log("second relay end", Date.now())
+            console.log("third tx start", Date.now())
             await xPortal2.connect(signer).xReceive(chainId, proof.path, proof.rlpParentNodes, blockNumber);
+            console.log("third tx end", Date.now())
 
             const encodedPack = ethers.utils.solidityPack(["uint256", "uint256", "bytes"], [chainId, blockNumber, proof.path]);
             const key = ethers.utils.solidityKeccak256(["bytes"], [encodedPack]);
@@ -168,10 +172,10 @@ async function main() {
             const s1 = await target.s1();
             const s2 = await target.s2();
             const b2 = await target.b2();
-            console.log(val1);
-            console.log(s1);
-            console.log(s2);
-            console.log(b2);
+            console.log("Target.sol uint val1:", val1);
+            console.log("Target.sol string s1:", s1);
+            console.log("Target.sol string s2:", s2);
+            console.log("Target.sol bytes b2:", b2);
         }
         delete sendWaitingList[blockNumber.toString()];
         console.log("send waiting list", sendWaitingList);
@@ -225,12 +229,16 @@ async function main() {
 
     xPortal1.on("SubmitBlockHeader", async (_chainId, _blockNumber, event) => {
         console.log("SubmitBlockHeader", event);
+        console.log("second relay start", Date.now())
         const chainId = ethers.BigNumber.from(_chainId).toNumber();
         const blockNumber = ethers.BigNumber.from(_blockNumber).toNumber();
 
         for (const proof of callWaitingList[blockNumber.toString()]) {
+            console.log("second relay end", Date.now())
+            console.log("third tx start", Date.now())
             await xPortal1.connect(signer).xRespond(proof.sourceContract, proof.targetChainId, blockNumber, proof.targetAccount, proof.rlpAccountProof, proof.slots, proof.rlpStorageProof);
-
+            console.log("third tx end", Date.now())
+            
             const encodedPack = ethers.utils.solidityPack(["address", "uint256", "uint256", "address", "bytes32[]"], [proof.sourceContract, proof.targetChainId, blockNumber, proof.targetAccount, proof.slots]);
             const key = ethers.utils.solidityKeccak256(["bytes"], [encodedPack]);
             console.log("key", key);

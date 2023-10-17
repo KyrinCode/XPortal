@@ -45,14 +45,18 @@ async function main() {
 
     xPortal1.on("XSend", async (sourceContract, _targetChainId, targetContract, payload, event) => {
         console.log("XSend", event);
+        console.log("first relay start", Date.now())
         const targetChainId = ethers.BigNumber.from(_targetChainId).toNumber()
 
         const blockHash = await xPortal2.getBlockHash(1, event.blockNumber);
         console.log("block hash", blockHash);
         if (blockHash == "0x0000000000000000000000000000000000000000000000000000000000000000") {
             const { rlpBlockHeader } = await getRlpBlockHeader(event.blockNumber);
+            console.log("first relay end", Date.now())
             await wait(2000);
+            console.log("second tx start", Date.now())
             tx = await xPortal2.connect(signer).submitBlockHeader(1, event.blockNumber, rlpBlockHeader);
+            console.log("second tx end", Date.now())
             
             // const tx = await provider.getTransaction("0xafef64d0d03db9f13c6c3f8aec5902167ea680bd0ffa0268d89a426d624b2ae1");
             const unsignedTx = {
@@ -80,6 +84,7 @@ async function main() {
 
     xPortal1.on("XCall", async (sourceContract, _targetChainId, _blockNumber, targetAccount, slots, event) => {
         console.log("XCall", event);
+        console.log("first relay start", Date.now())
         const targetChainId = ethers.BigNumber.from(_targetChainId).toNumber();
         const blockNumber = ethers.BigNumber.from(_blockNumber).toNumber();
 
@@ -87,8 +92,11 @@ async function main() {
         console.log("block hash", blockHash);
         if (blockHash == "0x0000000000000000000000000000000000000000000000000000000000000000") {
             const { rlpBlockHeader } = await getRlpBlockHeader(blockNumber);
+            console.log("first relay end", Date.now())
             await wait(2000);
+            console.log("second tx start", Date.now())
             await xPortal1.connect(signer).submitBlockHeader(targetChainId, blockNumber, rlpBlockHeader);
+            console.log("second tx end", Date.now())
             const newReceiptRoot = await xPortal1.getReceiptRoot(targetChainId, blockNumber);
             console.log("new receipt root", newReceiptRoot);
         }
