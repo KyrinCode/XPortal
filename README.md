@@ -1,6 +1,6 @@
 # XPortal
 
-A trustless lightweight cross-shard protocal.
+A trustless lightweight cross-shard protocol.
 
 #ganache #hardhat
 
